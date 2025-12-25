@@ -1,0 +1,13 @@
+opencv-python-headless==4.10.0.84
+ultralytics==8.3.49
+easyocr
+numpy==1.26.4
+pandas==2.2.3
+aiohttp==3.10.10
+pytz==2024.2
+pillow==10.4.0
+python-dotenv==1.0.1
+requests==2.32.3
+google-api-python-client
+google-auth-httplib2
+google-auth-oauthlib
