@@ -223,7 +223,8 @@ class DatabaseManager:
             return {}
             
     # --- Helper for Initialization ---
-    def seed_initial_config(self, factory_id, factory_name, milling_process, total_dumps):
+    def seed_initial_config(self, factory_id, factory_name, milling_process, total_dumps, 
+                            nvr_ip=None, nvr_user=None, nvr_pass=None):
         """Seed initial data for first-time run."""
         try:
             with self._get_connection() as conn:
@@ -247,19 +248,30 @@ class DatabaseManager:
                         cursor.execute("INSERT INTO dump_master (dump_id, dump_name, updated_at) VALUES (?, ?, ?)",
                                      (d_id, f"Dump Station {i}", datetime.now()))
                         
+                        # RTSP URL Template (Hikvision style: rtsp://user:pass@ip:554/Streaming/Channels/CH01)
+                        # Front Camera: (2i-1)
+                        # Top Camera: (2i)
+                        
+                        def build_url(idx):
+                            if nvr_ip and nvr_user and nvr_pass:
+                                return f"rtsp://{nvr_user}:{nvr_pass}@{nvr_ip}:554/Streaming/Channels/{idx}01"
+                            return f"CH{idx}01" # Placeholder if no NVR info
+
                         # Front Camera
                         c1_id = f"cam-{d_id}-front"
-                        ch_front = f"{(2*i-1)}01"
+                        ch_front = (2*i-1)
+                        url_front = build_url(ch_front)
                         cursor.execute("INSERT INTO camera_master (camera_id, camera_name, rtsp_url, view_type, updated_at) VALUES (?, ?, ?, ?, ?)",
-                                     (c1_id, f"Front {i}", f"CH{ch_front}", "FRONT", datetime.now()))
+                                     (c1_id, f"Front {i}", url_front, "FRONT", datetime.now()))
                         cursor.execute("INSERT INTO dump_camera_map (dump_id, camera_id, channel_type) VALUES (?, ?, ?)",
                                      (d_id, c1_id, "CH101"))
                         
                         # Top Camera
                         c2_id = f"cam-{d_id}-top"
-                        ch_top = f"{(2*i)}01"
+                        ch_top = (2*i)
+                        url_top = build_url(ch_top)
                         cursor.execute("INSERT INTO camera_master (camera_id, camera_name, rtsp_url, view_type, updated_at) VALUES (?, ?, ?, ?, ?)",
-                                     (c2_id, f"Top {i}", f"CH{ch_top}", "TOP", datetime.now()))
+                                     (c2_id, f"Top {i}", url_top, "TOP", datetime.now()))
                         cursor.execute("INSERT INTO dump_camera_map (dump_id, camera_id, channel_type) VALUES (?, ?, ?)",
                                      (d_id, c2_id, "CH201"))
                 

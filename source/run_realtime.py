@@ -5,6 +5,7 @@ from tkinter import ttk, messagebox
 import logging
 import threading
 import time
+import configparser
 from datetime import datetime
 from PIL import Image, ImageTk
 
@@ -23,13 +24,25 @@ class ProductionApp:
         # Setup Logging
         logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         self.log = logging.getLogger("ProductionApp")
+
+        # Load config.txt
+        self.config = configparser.ConfigParser()
+        self.config.read("config.txt", encoding="utf-8")
+        
+        factory = self.config.get("DEFAULT", "factory", fallback="MDC")
+        total_dumps = self.config.getint("DEFAULT", "total_dumps", fallback=8)
+        
+        nvr_ip = self.config.get("NVR", "ip", fallback=None)
+        nvr_user = self.config.get("NVR", "username", fallback=None)
+        nvr_pass = self.config.get("NVR", "password", fallback=None)
         
         # Setup DB
-        db_path = "sugarcane_v2.db"
+        db_path = self.config.get("DATABASE", "path", fallback="sugarcane_v2.db")
         self.db = DatabaseManager(db_path, logger=self.log)
         
-        # Seed initial dummy config if empty
-        self.db.seed_initial_config("MDC", "MDC Factory", "milling-process-01", 8)
+        # Seed initial config if empty
+        self.db.seed_initial_config(factory, f"{factory} Factory", "milling-process-01", total_dumps,
+                                   nvr_ip=nvr_ip, nvr_user=nvr_user, nvr_pass=nvr_pass)
         
         # Load Models (Heavy)
         self.log.info("Initializing AI Models...")
