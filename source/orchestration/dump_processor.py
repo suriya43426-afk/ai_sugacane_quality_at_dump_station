@@ -64,34 +64,53 @@ class DumpProcessor(threading.Thread):
     def _init_streams(self):
         for ch, url in self.urls.items():
             try:
-                self.log.info(f"Opening {ch}: {url}")
-                # channel_type in DB is like 'CH101', but map uses 'CH101' as key
-                self.caps[ch] = cv2.VideoCapture(url)
-                # Optimize for RTSP
-                self.caps[ch].set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                # 1. Try RTSP if provided
+                connected = False
+                if url and url.strip():
+                    self.log.info(f"Opening RTSP {ch}: {url}")
+                    self.caps[ch] = cv2.VideoCapture(url)
+                    self.caps[ch].set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    if self.caps[ch].isOpened():
+                        connected = True
 
-                # Connection Check & Fallback
-                if not self.caps[ch].isOpened():
-                    self.log.warning(f"RTSP failed for {ch}. Searching fallback in testing/vdo...")
+                # 2. Fallback to Testing VDO if RTSP fails or is empty
+                if not connected:
+                    self.log.warning(f"RTSP unavailable for {ch}. Searching fallback in testing/outcome...")
                     vdo_path = self._find_fallback_vdo(ch)
                     if vdo_path:
                         self.log.info(f"Using fallback VDO: {vdo_path}")
                         self.caps[ch] = cv2.VideoCapture(vdo_path)
+                    else:
+                        self.log.error(f"No fallback VDO found for {ch}")
             except Exception as e:
-                self.log.error(f"Failed to open {ch}: {e}")
+                self.log.error(f"Failed to initialize {ch}: {e}")
 
     def _find_fallback_vdo(self, ch_prefix):
-        """Finds a file in testing/vdo/ starting with CH101 or CH201."""
-        vdo_dir = os.path.join("testing", "vdo")
-        if not os.path.exists(vdo_dir):
-            return None
+        """Finds a speed-optimized file in testing/outcome/ or local vdo."""
+        # 1. Check outcome folder for _fast versions first (Priority)
+        search_dirs = [
+            os.path.join("testing", "outcome"),
+            os.path.join("testing", "vdo")
+        ]
         
-        try:
-            for f in os.listdir(vdo_dir):
-                if f.startswith(ch_prefix):
-                    return os.path.join(vdo_dir, f)
-        except Exception:
-            pass
+        # Flex search: CH101 or CH_101
+        patterns = [ch_prefix, ch_prefix.replace("CH", "CH_")]
+        
+        for vdo_dir in search_dirs:
+            if not os.path.exists(vdo_dir):
+                continue
+            
+            try:
+                files = os.listdir(vdo_dir)
+                # Sort to prefer '_fast.mp4'
+                files.sort(key=lambda x: ("_fast" not in x.lower(), x))
+                
+                for f in files:
+                    for p in patterns:
+                        if f.upper().startswith(p.upper()):
+                            return os.path.join(vdo_dir, f)
+            except Exception:
+                pass
         return None
 
     def _process_cycle(self, frames):
