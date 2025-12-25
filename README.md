@@ -1,49 +1,90 @@
-# AI Sugarcane Quality Detection at Dump Station
+# คู่มือการติดตั้งและใช้งานระบบ AI Sugarcane Quality Detection
 
-This is a production-ready edge AI system for multi-station sugarcane dump monitoring.
+ระบบตรวจสอบคุณภาพอ้อยอัตโนมัติบริเวณจุดดัมพ์ (Dump Station) โดยใช้ Edge AI และ Computer Vision
 
-## System Architecture
+---
 
-The system uses a state-based approach to monitor 8 dump stations using 16 camera channels (Front & Top views).
+## 📋 ภาพรวมระบบ (System Overview)
+ระบบนี้ทำงานแบบ Offline 100% บนเครื่อง PC (Edge) โดยใช้กล้อง 2 ตัวต่อ 1 จุดดัมพ์ (Front & Top) เพื่อตรวจสอบข้อมูลดังนี้:
+1. **กล้องหน้า (Front View):** ตรวจสอบป้ายทะเบียน (LPR) และสถานะการยกดัมพ์
+2. **กล้องบน (Top View):** ตรวจสอบประเภทอ้อย, ความสะอาด และความคืบหน้าการดัมพ์
 
-### Core Components
-- **FSM State Machine**: Strict 8-state transition logic requiring synchronized detections from both Front (Truck) and Top (Cane) cameras.
-- **Dual Model Inference**: 
-  - `objectdetection.pt`: Truck & License Plate (Front View)
-  - `classification.pt`: Sugarcane quality & status (Top View)
-- **SQLite Configuration**: All cameras and site metadata are loaded dynamically from a local database (`sugarcane_v2.db`).
-- **Reporting**: Automatically generates a 2x2 merged image for every completed dump session.
+---
 
-## State Machine & Capture Rules
+## 💻 ความต้องการของระบบ (Requirements)
+- **OS:** Windows 10/11 (64-bit)
+- **Python:** 3.10 ขึ้นไป
+- **Hardware:** แนะนำให้ใช้ GPU NVIDIA (RTX Series) เพื่อประสิทธิภาพสูงสุด
+- **Models:** ต้องมีไฟล์ `objectdetection.pt` และ `classification.pt` ในโฟลเดอร์ `models/`
 
-| State | Name | Logic | Capture Trigger |
-| :--- | :--- | :--- | :--- |
-| 1 | EMPTY_IDLE | No Truck + No Cane | - |
-| 2 | TRUCK_IN | Truck + Cane | **Image 1**: LPR + Timestamp |
-| 3 | DUMP_LIFT | Lifting + Cane 100% | **Image 2**: Sugarcane 100% |
-| 4 | DUMPING_ACTIVE| Lift Max + Dumping | **Image 3 & 4**: ~50% / ~25% |
-| 5 | DUMPING_EMPTY | Lift Max + No Cane | - |
-| 6 | DUMP_DOWN | Lowering + No Cane | - |
-| 7 | TRUCK_OUT | Truck Present + No Cane | - |
-| 8 | EMPTY_RESET | No Truck + No Cane | Session Finalized |
+---
 
-## Database Schema (SQLite)
-The system uses 8 standardized tables:
-1. `factory_master`: Site configuration.
-2. `dump_master`: Dump station definitions.
-3. `camera_master`: RTSP URLs and view types.
-4. `dump_camera_map`: Binding cameras to dumps.
-5. `dump_session`: UUID-based session tracking.
-6. `dump_images`: Individual capture metadata.
-7. `dump_state_log`: Audit trail for transitions.
-8. `system_config`: Key-Value settings.
+## 🛠️ ขั้นตอนการติดตั้ง (Installation)
 
-## Installation & Running
+1. **เตรียมสภาพแวดล้อม:**
+   - ตรวจสอบว่าติดตั้ง Python และ Git เรียบร้อยแล้ว
+   - Clone โปรเจกต์ไปยังตำแหน่งที่ต้องการ
 
-1. **Setup**: Run `setup.bat` to create the virtual environment and install dependencies.
-2. **Configuration**: Edit the SQLite database directly for camera URL changes.
-3. **Execution**: Run `run_realtime.bat` to start the monitoring dashboard.
-4. **Updates**: Run `update.bat` to pull changes and update the environment.
+2. **Setup ระบบ:**
+   - ดับเบิลคลิกไฟล์ `setup.bat`
+   - ระบบจะสร้าง Virtual Environment (`venv`) และติดตั้ง Library ที่จำเป็นให้อัตโนมัติ
 
-## Output Structure
-Filtered reports are saved to the `results/` directory as high-resolution merged images with standardized headers for full traceability.
+---
+
+## ⚙️ การตั้งค่าระบบ (Configuration)
+
+แก้ไขไฟล์ `config.txt` ที่อยู่ใน Root Directory:
+
+```ini
+[DEFAULT]
+factory = MDC        ; ชื่อโรงงาน
+total_dumps = 8      ; จำนวนจุดดัมพ์ทั้งหมด (สูงสุด 8)
+
+[NVR]
+ip = 192.168.1.100   ; IP ของเครื่อง NVR
+username = admin     ; Username ของ NVR
+password = password  ; Password ของ NVR
+```
+
+> [!IMPORTANT]
+> ระบบจะนำข้อมูล NVR ไปสร้าง RTSP URL ให้อัตโนมัติเมื่อรันครั้งแรก หากต้องการแก้ไข URL รายกล้องในภายหลัง ให้แก้ไขที่ฐานข้อมูล `sugarcane_v2.db` โดยตรง
+
+---
+
+## 🚀 การใช้งานโปรแกรม (Operation)
+
+### 1. เริ่มรันระบบ
+ดับเบิลคลิกที่ไฟล์ `run_realtime.bat` โปรแกรมจะเปิดหน้าจอ Dashboard ขึ้นมา:
+- **Table View:** แสดงสถานะ Real-time ของทุกจุดดัมพ์
+- **Current State:** แสดงสถานะ FSM (เช่น TRUCK_IN, DUMPING_ACTIVE)
+- **Double Click:** ดับเบิลคลิกที่แถวของจุดดัมพ์เพื่อดูรูป Merged Report ล่าสุด
+
+### 2. การตรวจสอบผลลัพธ์
+- รูปภาพผลลัพธ์จะถูกบันทึกไว้ในโฟลเดอร์ `results/`
+- แต่ละรอบการดัมพ์จะรวมภาพ 4 ช็อต (LPR, 100%, 50%, 25%) เข้าเป็นไฟล์เดียว
+
+---
+
+## 🧪 การทดสอบด้วยไฟล์วิดีโอ (Testing Mode)
+
+หากไม่มีการเชื่อมต่อกล้องจริง (RTSP Fail) ระบบจะดึงไฟล์วิดีโอมาทดสอบอัตโนมัติ:
+1. นำไฟล์วิดีโอววางที่ `testing/vdo/` (ชื่อไฟล์ต้องขึ้นต้นด้วย `CH101` หรือ `CH201`)
+2. (แนะนำ) รันไฟล์ `python3 testing/vdo_resizing.py` เพื่อเตรียมภาพ 1 FPS
+3. (แนะนำ) รันไฟล์ `python3 testing/vdo_fastify.py` เพื่อสร้างวิดีโอความเร็วสูง
+4. ระบบจะอ่านไฟล์จาก `testing/outcome/` มาวนลูปแสดงผลอัตโนมัติ
+
+---
+
+## 🔄 การอัปเดตระบบ (Maintenance)
+หากมีการอัปเดตโค้ดจากทีมพัฒนา:
+- ดับเบิลคลิกไฟล์ `update.bat`
+- ระบบจะทำการ `git pull` และอัปเดต dependencies ให้ทันที
+
+---
+
+## 📁 โครงสร้างโปรเดกต์ (Project Structure)
+- `models/` : เก็บไฟล์ AI Model (.pt)
+- `source/` : โค้ดโปรแกรมหลักและฐานข้อมูล
+- `testing/` : พื้นที่สำหรับไฟล์วิดีโอทดสอบ
+- `results/` : จุดเก็บภาพรายงานผล (Merged Images)
+- `config.txt` : ไฟล์ตั้งค่าหลัก
