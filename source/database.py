@@ -1,6 +1,6 @@
 import sqlite3
 import os
-import csv
+import uuid
 import logging
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -12,230 +12,257 @@ class DatabaseManager:
         self._init_db()
 
     def _get_connection(self):
-        return sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
 
     def _init_db(self):
-        """Initialize the database schema if it doesn't exist."""
+        """Initialize the production database schema (8 Tables)."""
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 
-                # Table: factories
+                # 1. factory_master
                 cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS factories (
-                        code TEXT PRIMARY KEY,
-                        thai_name TEXT,
+                    CREATE TABLE IF NOT EXISTS factory_master (
+                        factory_id TEXT PRIMARY KEY,
+                        factory_name TEXT,
+                        milling_process TEXT,
+                        location TEXT,
                         updated_at DATETIME
                     )
                 """)
                 
-                # Table: processing_logs
+                # 2. dump_master
                 cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS processing_logs (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        timestamp DATETIME,
-                        factory_code TEXT,
-                        lane_number INTEGER,
-                        image_path TEXT,
+                    CREATE TABLE IF NOT EXISTS dump_master (
+                        dump_id TEXT PRIMARY KEY,
+                        dump_name TEXT,
+                        is_active BOOLEAN DEFAULT 1,
+                        updated_at DATETIME
+                    )
+                """)
+                
+                # 3. camera_master
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS camera_master (
+                        camera_id TEXT PRIMARY KEY,
+                        camera_name TEXT,
+                        rtsp_url TEXT,
+                        view_type TEXT, -- 'FRONT' or 'TOP'
+                        updated_at DATETIME
+                    )
+                """)
+                
+                # 4. dump_camera_map
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS dump_camera_map (
+                        dump_id TEXT,
+                        camera_id TEXT,
+                        channel_type TEXT, -- 'CH101' (Front) or 'CH201' (Top)
+                        PRIMARY KEY (dump_id, camera_id),
+                        FOREIGN KEY (dump_id) REFERENCES dump_master(dump_id),
+                        FOREIGN KEY (camera_id) REFERENCES camera_master(camera_id)
+                    )
+                """)
+                
+                # 5. dump_session
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS dump_session (
+                        session_uuid TEXT PRIMARY KEY,
+                        dump_id TEXT,
+                        start_time DATETIME,
+                        end_time DATETIME,
                         plate_number TEXT,
-                        confidence REAL,
-                        is_uploaded BOOLEAN DEFAULT 0
+                        merged_image_path TEXT,
+                        status TEXT, -- 'INCOMPLETE', 'COMPLETE'
+                        FOREIGN KEY (dump_id) REFERENCES dump_master(dump_id)
                     )
                 """)
                 
-                # Table: system_logs
+                # 6. dump_images
                 cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS system_logs (
+                    CREATE TABLE IF NOT EXISTS dump_images (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        timestamp DATETIME,
-                        level TEXT,
-                        module TEXT,
-                        message TEXT
+                        session_uuid TEXT,
+                        image_type TEXT, -- 'IMAGE_1', 'IMAGE_2', 'IMAGE_3', 'IMAGE_4'
+                        image_path TEXT,
+                        captured_at DATETIME,
+                        FOREIGN KEY (session_uuid) REFERENCES dump_session(session_uuid)
                     )
                 """)
                 
-                try:
-                    cursor.execute("ALTER TABLE processing_logs ADD COLUMN classification TEXT")
-                except sqlite3.OperationalError:
-                    pass 
-
-                try:
-                    cursor.execute("ALTER TABLE processing_logs ADD COLUMN uploaded_at DATETIME")
-                except sqlite3.OperationalError:
-                    pass
-
+                # 7. dump_state_log
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS dump_state_log (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        session_uuid TEXT,
+                        state_from TEXT,
+                        state_to TEXT,
+                        changed_at DATETIME,
+                        FOREIGN KEY (session_uuid) REFERENCES dump_session(session_uuid)
+                    )
+                """)
+                
+                # 8. system_config
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS system_config (
+                        config_key TEXT PRIMARY KEY,
+                        config_value TEXT,
+                        description TEXT
+                    )
+                """)
+                
                 conn.commit()
-                self.logger.info(f"Database initialized at {self.db_path}")
+                self.logger.info(f"Production Database initialized at {self.db_path}")
         except Exception as e:
             self.logger.error(f"Failed to initialize database: {e}")
-            # raise # Don't raise, just log error so app can try to continue or fail gracefully
-            # Actually, without DB app is useless. But raising here might crash importing.
-            pass
 
-    def get_pending_uploads(self, limit: int = 50) -> List[Dict[str, Any]]:
-        """Fetch records where uploaded_at IS NULL."""
+    # --- Config & Master Data ---
+
+    def get_system_config(self, key: str, default: Any = None) -> Any:
         try:
             with self._get_connection() as conn:
-                conn.row_factory = sqlite3.Row
                 cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT * FROM processing_logs 
-                    WHERE uploaded_at IS NULL 
-                    ORDER BY timestamp ASC 
-                    LIMIT ?
-                """, (limit,))
-                rows = cursor.fetchall()
-                return [dict(row) for row in rows]
-        except Exception as e:
-            self.logger.error(f"Failed to fetch pending uploads: {e}")
+                cursor.execute("SELECT config_value FROM system_config WHERE config_key = ?", (key,))
+                row = cursor.fetchone()
+                return row['config_value'] if row else default
+        except:
+            return default
+
+    def get_active_dumps(self) -> List[Dict[str, Any]]:
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM dump_master WHERE is_active = 1")
+                return [dict(row) for row in cursor.fetchall()]
+        except:
             return []
 
-    def mark_as_uploaded(self, log_ids: List[int]):
-        """Mark records as uploaded with current timestamp."""
-        if not log_ids:
-            return
-        
-        try:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
-                now = datetime.now()
-                placeholders = ','.join('?' for _ in log_ids)
-                query = f"UPDATE processing_logs SET uploaded_at = ? WHERE id IN ({placeholders})"
-                cursor.execute(query, [now] + log_ids)
-                conn.commit()
-        except Exception as e:
-            self.logger.error(f"Failed to mark logs as uploaded: {e}")
-        except Exception as e:
-            self.logger.error(f"Failed to initialize database: {e}")
-            raise
-
-    def seed_factories_from_csv(self, csv_path: str):
-        """Reads the legacy factory_code_list.csv and upserts into factories table."""
-        if not os.path.exists(csv_path):
-            self.logger.warning(f"CSV path does not exist: {csv_path}")
-            return
-
-        try:
-            count = 0
-            with open(csv_path, "r", encoding="utf-8-sig") as f:
-                reader = csv.DictReader(f)
-                with self._get_connection() as conn:
-                    cursor = conn.cursor()
-                    now = datetime.now()
-                    
-                    for row in reader:
-                        code = row.get("factory", "").strip()
-                        thai_name = row.get("thai_name", "").strip()
-                        
-                        if code and thai_name:
-                            cursor.execute("""
-                                INSERT INTO factories (code, thai_name, updated_at)
-                                VALUES (?, ?, ?)
-                                ON CONFLICT(code) DO UPDATE SET
-                                    thai_name = excluded.thai_name,
-                                    updated_at = excluded.updated_at
-                            """, (code, thai_name, now))
-                            count += 1
-                    
-                    conn.commit()
-            self.logger.info(f"Seeded/Updated {count} factories from CSV.")
-        except Exception as e:
-            self.logger.error(f"Failed to seed factories from CSV: {e}")
-
-    def update_ai_result(self, old_path_keyword, new_path, plate, classification):
-        """Update the log entry based on a partial path match (files might move)."""
-        try:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
-                # Find ID by partial path match (since filename contains timestamp which is unique enough per lane)
-                # old_path_keyword is e.g. "20251217-224400_Factory"
-                # But safer to check if image_path LIKE %keyword%
-                
-                cursor.execute("""
-                    UPDATE processing_logs 
-                    SET image_path = ?, plate_number = ?, classification = ?
-                    WHERE image_path LIKE ? AND uploaded_at IS NULL
-                """, (new_path, plate, str(classification), f"%{old_path_keyword}%"))
-                conn.commit()
-        except Exception as e:
-            self.logger.error(f"Failed to update AI result: {e}")
-
-    def get_latest_lane_image(self, lane: int) -> Optional[str]:
-        """Get the latest image path for a specific lane."""
+    def get_cameras_for_dump(self, dump_id: str) -> Dict[str, str]:
+        """Returns {'CH101': rtsp_url, 'CH201': rtsp_url} for a dump."""
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
-                    SELECT image_path FROM processing_logs 
-                    WHERE lane_number = ? 
-                    ORDER BY timestamp DESC 
-                    LIMIT 1
-                """, (lane,))
-                row = cursor.fetchone()
-                return row[0] if row else None
-        except Exception:
-            return None
+                    SELECT m.channel_type, c.rtsp_url 
+                    FROM dump_camera_map m
+                    JOIN camera_master c ON m.camera_id = c.camera_id
+                    WHERE m.dump_id = ?
+                """, (dump_id,))
+                rows = cursor.fetchall()
+                return {row['channel_type']: row['rtsp_url'] for row in rows}
+        except:
+            return {}
 
-    def get_thai_factory_name(self, factory_code: str) -> str:
-        """Retrieve Thai name for a given factory code."""
-        try:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT thai_name FROM factories WHERE code = ?", (factory_code,))
-                row = cursor.fetchone()
-                if row:
-                    return row[0]
-        except Exception as e:
-            self.logger.error(f"Error fetching factory name for {factory_code}: {e}")
-        return ""
+    # --- Session Management ---
 
-    def log_processing_result(self, factory_code, lane, image_path, plate_number=None, confidence=None):
+    def create_session(self, dump_id: str) -> str:
+        session_uuid = str(uuid.uuid4())
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
-                    INSERT INTO processing_logs (timestamp, factory_code, lane_number, image_path, plate_number, confidence, classification)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (datetime.now(), factory_code, lane, image_path, plate_number, confidence, "PENDING"))
-                conn.commit()
-                return cursor.lastrowid
-        except Exception as e:
-            self.logger.error(f"Failed to log result: {e}")
-            return None
-
-    def log_system_event(self, level, module, message):
-        try:
-             with self._get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO system_logs (timestamp, level, module, message)
+                    INSERT INTO dump_session (session_uuid, dump_id, start_time, status)
                     VALUES (?, ?, ?, ?)
-                """, (datetime.now(), level, module, message))
+                """, (session_uuid, dump_id, datetime.now(), 'INCOMPLETE'))
+                conn.commit()
+            return session_uuid
+        except Exception as e:
+            self.logger.error(f"Failed to create session: {e}")
+            return ""
+
+    def update_session(self, session_uuid: str, **kwargs):
+        if not kwargs: return
+        try:
+            cols = ", ".join([f"{k} = ?" for k in kwargs.keys()])
+            vals = list(kwargs.values()) + [session_uuid]
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(f"UPDATE dump_session SET {cols} WHERE session_uuid = ?", vals)
+                conn.commit()
+        except Exception as e:
+            self.logger.error(f"Failed to update session {session_uuid}: {e}")
+
+    def log_state_transition(self, session_uuid: str, state_from: str, state_to: str):
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO dump_state_log (session_uuid, state_from, state_to, changed_at)
+                    VALUES (?, ?, ?, ?)
+                """, (session_uuid, state_from, state_to, datetime.now()))
                 conn.commit()
         except:
-             pass
+            pass
 
-    def get_latest_lane_info(self, lane: int) -> tuple[Optional[str], Optional[datetime], Optional[str]]:
-        """Get (plate_number, timestamp, classification) of latest event for a lane."""
+    def log_image(self, session_uuid: str, image_type: str, image_path: str):
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
-                # Ensure we select classification if it exists (it should now)
                 cursor.execute("""
-                    SELECT plate_number, timestamp, classification FROM processing_logs 
-                    WHERE lane_number = ? 
-                    ORDER BY id DESC LIMIT 1
-                """, (lane,))
-                row = cursor.fetchone()
-                if row:
-                    ts = row[1]
-                    if isinstance(ts, str):
-                        try:
-                            ts = datetime.fromisoformat(ts)
-                        except:
-                            pass
-                    # row[2] is classification
-                    return row[0], ts, row[2] 
+                    INSERT INTO dump_images (session_uuid, image_type, image_path, captured_at)
+                    VALUES (?, ?, ?, ?)
+                """, (session_uuid, image_type, image_path, datetime.now()))
+                conn.commit()
         except Exception as e:
-            self.logger.error(f"Error fetching latest info for lane {lane}: {e}")
-        return None, None, None
+            self.logger.error(f"Failed to log image: {e}")
+
+    def log_system_event(self, level, module, message):
+        # We can keep a simplified system log if needed, or reuse state_log for major events
+        pass
+
+    def get_factory_info(self) -> Dict[str, Any]:
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM factory_master LIMIT 1")
+                row = cursor.fetchone()
+                return dict(row) if row else {}
+        except:
+            return {}
+            
+    # --- Helper for Initialization ---
+    def seed_initial_config(self, factory_id, factory_name, milling_process, total_dumps):
+        """Seed initial data for first-time run."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Seed Factory
+                cursor.execute("""
+                    INSERT INTO factory_master (factory_id, factory_name, milling_process, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(factory_id) DO UPDATE SET 
+                        factory_name=excluded.factory_name,
+                        milling_process=excluded.milling_process,
+                        updated_at=excluded.updated_at
+                """, (factory_id, factory_name, milling_process, datetime.now()))
+                
+                # Seed Dumps & Cameras if empty
+                cursor.execute("SELECT COUNT(*) FROM dump_master")
+                if cursor.fetchone()[0] == 0:
+                    for i in range(1, total_dumps + 1):
+                        d_id = f"dump-{i:02d}"
+                        cursor.execute("INSERT INTO dump_master (dump_id, dump_name, updated_at) VALUES (?, ?, ?)",
+                                     (d_id, f"Dump Station {i}", datetime.now()))
+                        
+                        # Front Camera
+                        c1_id = f"cam-{d_id}-front"
+                        ch_front = f"{(2*i-1)}01"
+                        cursor.execute("INSERT INTO camera_master (camera_id, camera_name, rtsp_url, view_type, updated_at) VALUES (?, ?, ?, ?, ?)",
+                                     (c1_id, f"Front {i}", f"CH{ch_front}", "FRONT", datetime.now()))
+                        cursor.execute("INSERT INTO dump_camera_map (dump_id, camera_id, channel_type) VALUES (?, ?, ?)",
+                                     (d_id, c1_id, "CH101"))
+                        
+                        # Top Camera
+                        c2_id = f"cam-{d_id}-top"
+                        ch_top = f"{(2*i)}01"
+                        cursor.execute("INSERT INTO camera_master (camera_id, camera_name, rtsp_url, view_type, updated_at) VALUES (?, ?, ?, ?, ?)",
+                                     (c2_id, f"Top {i}", f"CH{ch_top}", "TOP", datetime.now()))
+                        cursor.execute("INSERT INTO dump_camera_map (dump_id, camera_id, channel_type) VALUES (?, ?, ?)",
+                                     (d_id, c2_id, "CH201"))
+                
+                conn.commit()
+        except Exception as e:
+            self.logger.error(f"Failed to seed config: {e}")

@@ -78,19 +78,12 @@ class App(tk.Tk):
         self.factory = self.cfg.get("factory", "Sxx")
 
         lanes_raw = get_total_lanes(self.cp, fallback=1)
-        self.total_lanes = clamp_lanes(lanes_raw, 1, 4)
-        
-        # New Logic: Show 4 Cameras per Lane
-        # Lane 1: 101, 201, 301, 401
-        # Lane 2: 501, 601, 701, 801
-        # Lane 3: 901, 1001, 1101, 1201
-        # Lane 4: 1301, 1401, 1501, 1601
+        self.total_lanes = clamp_lanes(lanes_raw, 1, 8)
         
         self.display_channels = []
         for i in range(self.total_lanes):
-            base = 101 + (i * 400)
-            # Add 4 cameras for this lane
-            self.display_channels.extend([base, base + 100, base + 200, base + 300])
+            base = 101 + (i * 200) # Jump 2 channels per lane
+            self.display_channels.extend([base, base + 100])
 
         self.logger.info(
             "Config parsed: factory=%s total_lanes=%s display_channels=%s",
@@ -189,10 +182,10 @@ class App(tk.Tk):
         # Fallback Live Preview Timestamp (ch -> float)
         self.last_fallback_ts = {} 
 
-        # Auto-Sync Scheduler (Hourly)
-        self.sync_stop_event = threading.Event()
-        self.sync_thread = threading.Thread(target=self._auto_sync_loop, daemon=True)
-        self.sync_thread.start()
+        # Auto-Sync Scheduler (Disabled per Offline Mode Request)
+        # self.sync_stop_event = threading.Event()
+        # self.sync_thread = threading.Thread(target=self._auto_sync_loop, daemon=True)
+        # self.sync_thread.start()
 
         # Test Flag
         self.do_test_snapshot = False
@@ -568,8 +561,8 @@ class App(tk.Tk):
         self.lbl_status = tk.Label(btns, text="System Normal", bg="#4CAF50", fg="white", font=("Segoe UI", 10, "bold"), height=2)
         self.lbl_status.pack(side="left", fill="x", expand=True)
 
-        # AI Process Button (Renamed)
-        self.btn_daily = ttk.Button(btns, text="Sync Cloud", command=self._on_trigger_cloud_sync)
+        # AI Process Button (Disabled)
+        self.btn_daily = ttk.Button(btns, text="Sync Cloud (OFF)", state="disabled")
         self.btn_daily.pack(side="left", padx=(6, 0))
         
         # Test Upload Button (New)
@@ -737,9 +730,9 @@ class App(tk.Tk):
     def _camera_grid(self):
         """
         Return (rows, col)
-        New Logic: Rows = Total Lanes, Cols = 4 (Fixed)
+        New Logic: Rows = Total Lanes, Cols = 2 (LPR + Sugarcane)
         """
-        return self.total_lanes, 4
+        return self.total_lanes, 2
 
 
         """Update system status indicator (Uptime/Color)."""
