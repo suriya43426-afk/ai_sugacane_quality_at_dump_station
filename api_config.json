@@ -1,5 +1,0 @@
-{
-    "cqc_endpoint": "https://sc-vision-gw.ocsb.go.th/cqc-api/api/v1/cane-data/upload",
-    "hq_endpoint": "https://54.169.118.196:8443/submit-cane-delivery",
-    "x_api_key": "jqypLpbbIhDxJrJGihT5GkUdcteWJHha6qysE6nevT46byCvZ42nqcus5DgBAqk23tbd4FQo0BaQtXf5kYBBPuSVrSqLJOTv50ID"
-}

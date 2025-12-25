@@ -10,7 +10,7 @@ from PIL import Image, ImageTk
 
 # Standard internal imports
 from source.database import DatabaseManager
-from source.lpr_engine import LPREngine
+from source.orchestration.lpr_engine import LPREngine
 from source.orchestration.classification_engine import ClassificationEngine
 from source.orchestration.dump_processor import DumpProcessor
 

@@ -1,0 +1,10 @@
+[DEFAULT]
+factory = MDC
+total_dumps = 8
+
+[DATABASE]
+path = sugarcane_v2.db
+
+[AI]
+lpr_conf = 0.40
+use_gpu = auto

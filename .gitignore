@@ -8,7 +8,7 @@ __pycache__/
 Thumbs.db
 
 # User specific / Local data
-config.txt
+# config.txt (Removed from ignore to match required structure)
 run_realtime.log
 CameraStatusLog.txt
 
