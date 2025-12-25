@@ -1,5 +1,9 @@
 import os
 import sys
+
+# Add project root to path for absolute imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import tkinter as tk
 from tkinter import ttk, messagebox
 import logging
@@ -8,6 +12,9 @@ import time
 import configparser
 from datetime import datetime
 from PIL import Image, ImageTk
+
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 
 # Standard internal imports
 from source.database import DatabaseManager
@@ -93,10 +100,40 @@ class ProductionApp:
         ttk.Button(footer, text="Refresh DB", command=self._refresh_db).pack(side="left")
         ttk.Label(footer, text="Double-click a row to preview latest merged image").pack(side="right")
 
+        # Live View Section for Dump 1
+        live_frame = ttk.LabelFrame(self.root, text="LIVE VIEW: DUMP 1 (Station 01)", padding=10)
+        live_frame.pack(fill="x", side="bottom")
+
+        self.live_lpr_lbl = ttk.Label(live_frame, text="Front (CH101) - LPR")
+        self.live_lpr_lbl.pack(side="left", padx=5, expand=True)
+
+        self.live_ai_lbl = ttk.Label(live_frame, text="Top (CH201) - AI")
+        self.live_ai_lbl.pack(side="right", padx=5, expand=True)
+
     def _update_clock(self):
         self.clock_var.set(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         self.root.after(1000, self._update_clock)
         self._update_table()
+        self._update_live_view()
+
+    def _update_live_view(self):
+        # Update live view for Dump 1 (Station 01)
+        # We assume dump-01 is the ID for Dump 1
+        p1 = next((p for p in self.processors if p.dump_id == "dump-01"), None)
+        if not p1 or not p1.latest_frames:
+            return
+
+        for ch, label in [('CH101', self.live_lpr_lbl), ('CH201', self.live_ai_lbl)]:
+            frame = p1.latest_frames.get(ch)
+            if frame is not None:
+                # Resize for preview
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                img = Image.fromarray(frame_rgb)
+                img.thumbnail((400, 300))
+                tk_img = ImageTk.PhotoImage(img)
+                
+                label.configure(image=tk_img)
+                label.image = tk_img # Keep reference
 
     def _update_table(self):
         # Update table with current processor states

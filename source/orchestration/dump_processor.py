@@ -30,6 +30,7 @@ class DumpProcessor(threading.Thread):
         }
         self.plate_number = "UNKNOWN"
         self.session_uuid = None
+        self.latest_frames = {} # Added for UI live view
 
     def run(self):
         self.log.info(f"Starting processor for {self.dump_id}")
@@ -49,6 +50,9 @@ class DumpProcessor(threading.Thread):
                             ret, frame = cap.read()
                         
                         if ret: frames[ch] = frame
+                
+                # Update latest_frames for UI consumption
+                self.latest_frames = frames.copy()
                 
                 # 2. Analyze at ~2-5 FPS to save CPU
                 now = time.time()
