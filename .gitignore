@@ -19,6 +19,7 @@ results/
 Results/
 debug/
 testing/
+!testing/vdo_resizing.py
 buffer_images/
 buffer/
 VDO/

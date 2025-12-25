@@ -43,6 +43,11 @@ class DumpProcessor(threading.Thread):
                 for ch, cap in self.caps.items():
                     if cap and cap.isOpened():
                         ret, frame = cap.read()
+                        if not ret:
+                            # If video file, loop back to start
+                            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                            ret, frame = cap.read()
+                        
                         if ret: frames[ch] = frame
                 
                 # 2. Analyze at ~2-5 FPS to save CPU
@@ -60,11 +65,34 @@ class DumpProcessor(threading.Thread):
         for ch, url in self.urls.items():
             try:
                 self.log.info(f"Opening {ch}: {url}")
+                # channel_type in DB is like 'CH101', but map uses 'CH101' as key
                 self.caps[ch] = cv2.VideoCapture(url)
                 # Optimize for RTSP
                 self.caps[ch].set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+                # Connection Check & Fallback
+                if not self.caps[ch].isOpened():
+                    self.log.warning(f"RTSP failed for {ch}. Searching fallback in testing/vdo...")
+                    vdo_path = self._find_fallback_vdo(ch)
+                    if vdo_path:
+                        self.log.info(f"Using fallback VDO: {vdo_path}")
+                        self.caps[ch] = cv2.VideoCapture(vdo_path)
             except Exception as e:
                 self.log.error(f"Failed to open {ch}: {e}")
+
+    def _find_fallback_vdo(self, ch_prefix):
+        """Finds a file in testing/vdo/ starting with CH101 or CH201."""
+        vdo_dir = os.path.join("testing", "vdo")
+        if not os.path.exists(vdo_dir):
+            return None
+        
+        try:
+            for f in os.listdir(vdo_dir):
+                if f.startswith(ch_prefix):
+                    return os.path.join(vdo_dir, f)
+        except Exception:
+            pass
+        return None
 
     def _process_cycle(self, frames):
         f_frame = frames.get('CH101')
