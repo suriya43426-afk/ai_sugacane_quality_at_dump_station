@@ -28,6 +28,8 @@ class LPRResult:
     conf: float
 
 
+import threading
+
 class LPREngine:
     def __init__(
         self,
@@ -36,9 +38,11 @@ class LPREngine:
         logger: Optional[logging.Logger] = None,
         ocr_lang: str = "en",
         use_gpu: bool = False,
+        global_lock: Optional[threading.Lock] = None
     ):
         self.log = logger or logging.getLogger("run_realtime.lpr")
         self.conf_th = float(conf_th)
+        self._lock = global_lock if global_lock else threading.Lock()
 
         self.log.info("Loading YOLO model: %s", model_path)
         self.model = YOLO(model_path)
@@ -72,8 +76,9 @@ class LPREngine:
         if frame_bgr is None:
             return None
 
-        # YOLO detect
-        results = self.model(frame_bgr, verbose=False, device=self.device)
+        # YOLO detect (Global Lock)
+        with self._lock:
+            results = self.model(frame_bgr, verbose=False, device=self.device)
         if not results:
             return None
 
@@ -125,12 +130,13 @@ class LPREngine:
 
             # Allowlist: digits + hyphen + some alphas to swap later?
             # EasyOCR best works if we let it read everything then we filter.
-            result = self.reader.readtext(
-                roi_disp, 
-                detail=1,
-                paragraph=False,
-                allowlist=None 
-            )
+            with self._lock:
+                result = self.reader.readtext(
+                    roi_disp, 
+                    detail=1,
+                    paragraph=False,
+                    allowlist=None 
+                )
 
             if not result:
                 return "00-0000"

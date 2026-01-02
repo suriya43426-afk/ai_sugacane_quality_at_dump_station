@@ -8,13 +8,14 @@ from source.orchestration.dump_state_manager import StateManager, DumpState
 from source.utils.image_merger import merge_production_images
 
 class DumpProcessor(threading.Thread):
-    def __init__(self, dump_id, db, lpr_engine, cls_engine, logger=None):
+    def __init__(self, dump_id, db, lpr_engine, cls_engine, logger=None, testing_mode=False):
         super().__init__(name=f"Processor_{dump_id}", daemon=True)
         self.dump_id = dump_id
         self.db = db
         self.lpr_engine = lpr_engine
         self.cls_engine = cls_engine
         self.log = logger or logging.getLogger(f"DumpProcessor_{dump_id}")
+        self.testing_mode = testing_mode
         
         self.sm = StateManager(dump_id, logger=self.log)
         self.running = True
@@ -30,7 +31,7 @@ class DumpProcessor(threading.Thread):
         }
         self.plate_number = "UNKNOWN"
         self.session_uuid = None
-        self.latest_frames = {} # Added for UI live view
+        self.latest_frames = {} 
 
     def run(self):
         self.log.info(f"Starting processor for {self.dump_id}")
@@ -54,9 +55,9 @@ class DumpProcessor(threading.Thread):
                 # Update latest_frames for UI consumption
                 self.latest_frames = frames.copy()
                 
-                # 2. Analyze at ~2-5 FPS to save CPU
+                # 2. Analyze at ~2 FPS (Optimized for CPU stability)
                 now = time.time()
-                if now - last_analysis > 0.2:
+                if now - last_analysis > 0.5:
                     last_analysis = now
                     self._process_cycle(frames)
                 
@@ -68,24 +69,50 @@ class DumpProcessor(threading.Thread):
     def _init_streams(self):
         for ch, url in self.urls.items():
             try:
-                # 1. Try RTSP if provided
                 connected = False
-                if url and url.strip():
-                    self.log.info(f"Opening RTSP {ch}: {url}")
-                    self.caps[ch] = cv2.VideoCapture(url)
-                    self.caps[ch].set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                    if self.caps[ch].isOpened():
-                        connected = True
+                
+                # 0. Check Testing Mode
+                if self.testing_mode:
+                    self.log.info(f"{ch}: Testing Mode=ON. Skipping RTSP, using fallback VDO.")
+                else:
+                    # 1. Try RTSP (Priority)
+                    if url and url.strip():
+                        self.log.info(f"Opening RTSP {ch}: {url}")
+                        try:
+                            # Attempt to set a lower timeout (backend dependent, often doesn't work directly in cv2 props)
+                            # but we can try opening with API preference if needed.
+                            # For now, we rely on standard open but log clearly.
+                            cap = cv2.VideoCapture(url)
+                            if cap.isOpened():
+                                self.caps[ch] = cap
+                                connected = True
+                                self.log.info(f"Connected to RTSP {ch}")
+                            else:
+                                self.log.warning(f"RTSP failed to open {ch}")
+                        except Exception as e:
+                            self.log.error(f"RTSP Exception {ch}: {e}")
 
-                # 2. Fallback to Testing VDO if RTSP fails or is empty
+                # 2. Key Fallback: If not connected (or Testing Mode), try Testing VDO
                 if not connected:
-                    self.log.warning(f"RTSP unavailable for {ch}. Searching fallback in testing/outcome...")
+                    if not self.testing_mode:
+                        self.log.info(f"Camera not connected for {ch}. Searching for fallback VDO...")
                     vdo_path = self._find_fallback_vdo(ch)
                     if vdo_path:
-                        self.log.info(f"Using fallback VDO: {vdo_path}")
-                        self.caps[ch] = cv2.VideoCapture(vdo_path)
+                        self.log.info(f"Checking fallback VDO: {vdo_path}")
+                        if os.path.exists(vdo_path):
+                            self.caps[ch] = cv2.VideoCapture(vdo_path)
+                            if self.caps[ch].isOpened():
+                                connected = True
+                                self.log.info(f"Successfully opened fallback VDO: {vdo_path}")
+                            else:
+                                self.log.error(f"Failed to open video file: {vdo_path}")
+                        else:
+                            self.log.error(f"Video file path does not exist: {vdo_path}")
                     else:
-                        self.log.error(f"No fallback VDO found for {ch}")
+                        self.log.error(f"No fallback VDO found for pattern {ch}")
+
+                if not connected:
+                    self.log.error(f"Failed to initialize {ch} (No VDO and No RTSP)")
             except Exception as e:
                 self.log.error(f"Failed to initialize {ch}: {e}")
 

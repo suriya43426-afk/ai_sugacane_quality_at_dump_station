@@ -1,0 +1,121 @@
+import sys
+from datetime import datetime
+from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, 
+                               QVBoxLayout, QLabel, QStackedWidget)
+from PySide6.QtCore import Qt, QTimer, QDateTime
+from PySide6.QtGui import QIcon, QFont, QPalette, QColor
+
+from source.ui.qt_ui.sidebar import Sidebar
+from source.ui.qt_ui.overview_view import OverviewView
+from source.ui.qt_ui.single_view import SingleStationView
+from source.ui.qt_ui.modern_style import ModernStyle
+
+class QtMainWindow(QMainWindow):
+    def __init__(self, system, title="AI Sugarcane Quality Detection"):
+        super().__init__()
+        self.system = system
+        
+        # Apply Global Style
+        if QApplication.instance():
+            QApplication.instance().setStyleSheet(ModernStyle.get_style())
+            
+        self.setWindowTitle(title)
+        self.resize(1920, 1080)
+        
+        self._setup_theme()
+        
+        # Main Layout
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+        
+        self.main_layout = QHBoxLayout(central_widget)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+        
+        # 1. Sidebar (Compact)
+        self.sidebar = Sidebar(self)
+        self.sidebar.view_selected.connect(self._on_view_selected)
+        self.main_layout.addWidget(self.sidebar)
+        
+        # 2. Stacked Content (Overview vs Single)
+        self.content_stack = QStackedWidget()
+        self.main_layout.addWidget(self.content_stack)
+        
+        # Page 0: Overview
+        self.overview_view = OverviewView(self.system)
+        self.content_stack.addWidget(self.overview_view)
+        
+        # Page 1: Single Dump View
+        self.single_view = SingleStationView(self.system)
+        self.content_stack.addWidget(self.single_view)
+        
+        # Timer
+        self.timer = QTimer()
+        self.timer.timeout.connect(self._update_state)
+        self.timer.start(100) # 10 FPS
+
+    def _on_view_selected(self, view_id):
+        if view_id == "overview":
+            self.content_stack.setCurrentIndex(0)
+        else:
+            # Assume view_id is dump_id e.g. "MDC-A-01"
+            self.single_view.set_station(view_id)
+            self.content_stack.setCurrentIndex(1)
+
+    def _setup_theme(self):
+        pass
+
+    def _update_state(self):
+        # Update Clock
+        now_str = QDateTime.currentDateTime().toString("HH:mm:ss")
+        self.sidebar.update_clock(now_str)
+        
+        # Update Active View Only
+        idx = self.content_stack.currentIndex()
+        if idx == 0:
+            self.overview_view.update_view()
+        elif idx == 1:
+            self.single_view.update_view()
+
+    def closeEvent(self, event):
+        self.system.stop_processors()
+        event.accept()
+
+if __name__ == "__main__":
+    # Mock System for testing
+    class MockSystem:
+        def stop_processors(self): pass
+        def get_processor_states(self):
+            return [
+                {'dump_id': 'MDC-A-01', 'status': 'RUNNING', 'state': 'IDLE', 'lpr': 'ABC-1234'},
+                {'dump_id': 'MDC-A-02', 'status': 'ERROR', 'state': 'SCANNING', 'lpr': '-'},
+                {'dump_id': 'MDC-A-03', 'status': 'RUNNING', 'state': 'IDLE', 'lpr': 'XYZ-9999'},
+            ]
+        def get_latest_frames(self, dump_id): return {}
+        def get_system_info(self): return {'factory': 'Test Factory', 'milling': 'Process X'}
+        
+        def get_recent_transactions(self, limit=50):
+            return [
+                ('1001', 'MDC-A-01', True, 'ABC-1234', '12:00:00'),
+                ('1002', 'MDC-A-02', False, 'XYZ-9999', '12:05:00'),
+                ('1003', 'MDC-A-01', True, 'LPR-5555', '12:10:00'),
+            ]
+        
+        def get_dashboard_charts_data(self):
+            return {
+                'hourly_trend': [('08:00', 5), ('09:00', 12), ('10:00', 8), ('11:00', 15)],
+                'quality_breakdown': {'Clean': 60, 'Dirty': 30, 'Contaminated': 10},
+                'process_breakdown': {'A': 50, 'B': 30, 'C': 20}
+            }
+            
+        def get_daily_report(self, date_str):
+            return [
+                ['Station', 'Time', 'LPR', 'Quality'],
+                ['MDC-A-01', '08:00', 'ABC-1234', 'Clean'],
+                ['MDC-A-02', '08:05', 'XYZ-9999', 'Dirty']
+            ]
+            
+    app = QApplication(sys.argv)
+    window = QtMainWindow(MockSystem())
+    window.show()
+    sys.exit(app.exec())

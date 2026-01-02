@@ -1,218 +1,33 @@
 import os
 import sys
 
+# Reduce RTSP timeout to 3 seconds for faster fallback
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp|timeout;3000"
+
 # Add project root to path for absolute imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-import tkinter as tk
-from tkinter import ttk, messagebox
-import logging
-import threading
-import time
-import configparser
-from datetime import datetime
-from PIL import Image, ImageTk
 
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
-# Standard internal imports
-from source.database import DatabaseManager
-from source.orchestration.lpr_engine import LPREngine
-from source.orchestration.classification_engine import ClassificationEngine
-from source.orchestration.dump_processor import DumpProcessor
-
-class ProductionApp:
-    def __init__(self):
-        self.root = tk.Tk()
-        self.root.title("AI Sugarcane Quality Detection - Production v1.0")
-        self.root.geometry("1024x768")
-        
-        # Setup Logging
-        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        self.log = logging.getLogger("ProductionApp")
-
-        # Load config.txt
-        self.config = configparser.ConfigParser()
-        self.config.read("config.txt", encoding="utf-8")
-        
-        factory = self.config.get("DEFAULT", "factory", fallback="MDC")
-        total_dumps = self.config.getint("DEFAULT", "total_dumps", fallback=8)
-        
-        nvr_ip = self.config.get("NVR", "ip", fallback=None)
-        nvr_user = self.config.get("NVR", "username", fallback=None)
-        nvr_pass = self.config.get("NVR", "password", fallback=None)
-        
-        # Setup DB
-        db_path = self.config.get("DATABASE", "path", fallback="sugarcane_v2.db")
-        self.db = DatabaseManager(db_path, logger=self.log)
-        
-        # Seed initial config if empty
-        self.db.seed_initial_config(factory, f"{factory} Factory", "milling-process-01", total_dumps,
-                                   nvr_ip=nvr_ip, nvr_user=nvr_user, nvr_pass=nvr_pass)
-        
-        # Load Models (Heavy)
-        self.log.info("Initializing AI Models...")
-        self.lpr_engine = LPREngine(model_path="models/objectdetection.pt", logger=self.log)
-        self.cls_engine = ClassificationEngine(model_path="models/classification.pt", logger=self.log)
-        
-        # Load Active Dumps
-        self.dumps = self.db.get_active_dumps()
-        self.processors = []
-        
-        self._build_ui()
-        self._start_processors()
-        
-        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
-
-    def _build_ui(self):
-        # Header
-        header = ttk.Frame(self.root, padding=10)
-        header.pack(fill="x")
-        ttk.Label(header, text="DUMP STATION MONITORING", font=("Arial", 18, "bold")).pack(side="left")
-        
-        self.clock_var = tk.StringVar()
-        ttk.Label(header, textvariable=self.clock_var, font=("Arial", 14)).pack(side="right")
-        self._update_clock()
-        
-        # Main Body: Table of Dumps
-        main_frame = ttk.Frame(self.root, padding=10)
-        main_frame.pack(fill="both", expand=True)
-        
-        columns = ("dump_id", "status", "current_state", "lpr", "last_update")
-        self.tree = ttk.Treeview(main_frame, columns=columns, show="headings", height=15)
-        
-        self.tree.heading("dump_id", text="Dump ID")
-        self.tree.heading("status", text="Connection")
-        self.tree.heading("current_state", text="Current State")
-        self.tree.heading("lpr", text="License Plate")
-        self.tree.heading("last_update", text="Last Event")
-        
-        for col in columns:
-            self.tree.column(col, width=150, anchor="center")
-            
-        self.tree.pack(fill="both", expand=True)
-        self.tree.bind("<Double-1>", self._on_double_click)
-        
-        # Bottom Controls
-        footer = ttk.Frame(self.root, padding=10)
-        footer.pack(fill="x")
-        ttk.Button(footer, text="Refresh DB", command=self._refresh_db).pack(side="left")
-        ttk.Label(footer, text="Double-click a row to preview latest merged image").pack(side="right")
-
-        # Live View Section for Dump 1
-        live_frame = ttk.LabelFrame(self.root, text="LIVE VIEW: DUMP 1 (Station 01)", padding=10)
-        live_frame.pack(fill="x", side="bottom")
-
-        self.live_lpr_lbl = ttk.Label(live_frame, text="Front (CH101) - LPR")
-        self.live_lpr_lbl.pack(side="left", padx=5, expand=True)
-
-        self.live_ai_lbl = ttk.Label(live_frame, text="Top (CH201) - AI")
-        self.live_ai_lbl.pack(side="right", padx=5, expand=True)
-
-    def _update_clock(self):
-        self.clock_var.set(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        self.root.after(1000, self._update_clock)
-        self._update_table()
-        self._update_live_view()
-
-    def _update_live_view(self):
-        # Update live view for Dump 1 (Station 01)
-        # We assume dump-01 is the ID for Dump 1
-        p1 = next((p for p in self.processors if p.dump_id == "dump-01"), None)
-        if not p1 or not p1.latest_frames:
-            return
-
-        for ch, label in [('CH101', self.live_lpr_lbl), ('CH201', self.live_ai_lbl)]:
-            frame = p1.latest_frames.get(ch)
-            if frame is not None:
-                # Resize for preview
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                img = Image.fromarray(frame_rgb)
-                img.thumbnail((400, 300))
-                tk_img = ImageTk.PhotoImage(img)
-                
-                label.configure(image=tk_img)
-                label.image = tk_img # Keep reference
-
-    def _update_table(self):
-        # Update table with current processor states
-        for p in self.processors:
-            item_id = p.dump_id
-            state = p.sm.state.name
-            lpr = p.plate_number if p.plate_number else "-"
-            
-            if self.tree.exists(item_id):
-                self.tree.item(item_id, values=(p.dump_id, "RUNNING", state, lpr, datetime.now().strftime("%H:%M:%S")))
-            else:
-                self.tree.insert("", "end", iid=item_id, values=(p.dump_id, "RUNNING", state, lpr, "-"))
-
-    def _start_processors(self):
-        self.log.info(f"Starting {len(self.dumps)} processors...")
-        for d in self.dumps:
-            p = DumpProcessor(d['dump_id'], self.db, self.lpr_engine, self.cls_engine, logger=self.log)
-            p.start()
-            self.processors.append(p)
-
-    def _on_double_click(self, event):
-        item = self.tree.selection()[0]
-        dump_id = self.tree.item(item, "values")[0]
-        
-        # Find latest session for this dump
-        # Fetch from DB: latest merged_image_path where dump_id = x
-        # Mock logic or direct DB call:
-        session = self._find_latest_merged(dump_id)
-        if session and session['merged_image_path']:
-            self._show_preview(session['merged_image_path'])
-        else:
-            messagebox.showinfo("Report", f"No completed session reports found for {dump_id}")
-
-    def _find_latest_merged(self, dump_id):
-        # Implementation in DatabaseManager or direct local check
-        try:
-            with self.db._get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    SELECT * FROM dump_session 
-                    WHERE dump_id = ? AND status = 'COMPLETE' 
-                    ORDER BY end_time DESC LIMIT 1
-                """, (dump_id,))
-                row = cursor.fetchone()
-                return dict(row) if row else None
-        except: return None
-
-    def _show_preview(self, path):
-        if not os.path.exists(path):
-            messagebox.showerror("Error", f"File not found: {path}")
-            return
-            
-        top = tk.Toplevel(self.root)
-        top.title(f"Report Preview: {os.path.basename(path)}")
-        top.geometry("800x600")
-        
-        img = Image.open(path)
-        img.thumbnail((780, 580))
-        tk_img = ImageTk.PhotoImage(img)
-        
-        lbl = ttk.Label(top, image=tk_img)
-        lbl.image = tk_img # Keep reference
-        lbl.pack(pady=10)
-
-    def _refresh_db(self):
-        self.log.info("Refreshing configuration from Database...")
-        # In a real app, this would check for new camera URLs etc.
-        messagebox.showinfo("Config", "Configuration re-loaded from SQLite.")
-
-    def _on_close(self):
-        self.log.info("Shutting down...")
-        for p in self.processors:
-            p.running = False
-        self.root.destroy()
-        os._exit(0)
-
-    def run(self):
-        self.root.mainloop()
+from source.core.system import SugarcaneSystem
+from source.ui.qt_main import QtMainWindow
+from PySide6.QtWidgets import QApplication
 
 if __name__ == "__main__":
-    app = ProductionApp()
-    app.run()
+    # 1. Initialize Core System
+    system = SugarcaneSystem()
+    system.start_processors()
+    
+    # 2. Launch GUI (Qt)
+    app = QApplication(sys.argv)
+    
+    # Apply global stylesheet if needed (e.g. font)
+    font = app.font()
+    font.setFamily("Segoe UI")
+    app.setFont(font)
+    
+    window = QtMainWindow(system)
+    window.show()
+    
+    sys.exit(app.exec())

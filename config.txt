@@ -1,6 +1,7 @@
 [DEFAULT]
 factory = MDC
 total_dumps = 8
+testing = 1
 
 [DATABASE]
 path = sugarcane_v2.db

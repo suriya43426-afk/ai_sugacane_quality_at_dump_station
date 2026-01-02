@@ -5,9 +5,12 @@ import torch
 from ultralytics import YOLO
 from typing import Optional, Dict, Any
 
+import threading
+
 class ClassificationEngine:
-    def __init__(self, model_path: str, logger: Optional[logging.Logger] = None, use_gpu: bool = False):
+    def __init__(self, model_path: str, logger: Optional[logging.Logger] = None, use_gpu: bool = False, global_lock: Optional[threading.Lock] = None):
         self.log = logger or logging.getLogger("ClassificationEngine")
+        self._lock = global_lock if global_lock else threading.Lock()
         self.log.info(f"Loading Classification model: {model_path}")
         self.model = YOLO(model_path)
         self.device = 0 if use_gpu and torch.cuda.is_available() else "cpu"
@@ -20,7 +23,8 @@ class ClassificationEngine:
         if frame_bgr is None:
             return {}
 
-        results = self.model(frame_bgr, verbose=False, device=self.device)
+        with self._lock:
+            results = self.model(frame_bgr, verbose=False, device=self.device)
         
         # Heuristic/Placeholder: Assuming classes: 0=Cane, 1=Dirt, 2=Trash
         # In a real classification model, we might get a single class result.
@@ -31,13 +35,9 @@ class ClassificationEngine:
         dumping = False
         contamination = "NONE"
 
-        if results and len(results[0].boxes) > 0:
-            # Simple heuristic for "Cane Presence"
-            # If any 'sugarcane' class box is detected with high confidence
+        if results and (hasattr(results[0], 'boxes') and results[0].boxes is not None and len(results[0].boxes) > 0):
+            # Detection model path
             cane_detected = True
-            
-            # Estimate area of cane boxes relative to frame
-            # Or use a specific region (ROI) coverage
             total_area = frame_bgr.shape[0] * frame_bgr.shape[1]
             cane_area = 0
             for box in results[0].boxes:
@@ -47,12 +47,19 @@ class ClassificationEngine:
                     cane_area += (x2 - x1) * (y2 - y1)
                 
             cane_percentage = min(100, int((cane_area / total_area) * 200)) # Scale factor
-            
-            # Simple heuristic for 'dumping':
-            # Check for motion or specific 'dumping' class if available
-            # For now, if coverage is > 10% and < 90%, it might be dumping
             if 10 < cane_percentage < 90:
                 dumping = True
+        elif results and (hasattr(results[0], 'probs') and results[0].probs is not None):
+            # Classification model path
+            probs = results[0].probs
+            top1_idx = int(probs.top1)
+            top1_conf = float(probs.top1conf)
+            
+            # Assuming class 0 is 'cane' or similar based on project context
+            if top1_idx == 0 and top1_conf > 0.5:
+                cane_detected = True
+                cane_percentage = int(top1_conf * 100)
+                dumping = True # If we detect cane in classification, assume it might be dumping
                 
         return {
             'cane_detected': cane_detected,

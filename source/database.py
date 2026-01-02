@@ -278,3 +278,135 @@ class DatabaseManager:
                 conn.commit()
         except Exception as e:
             self.logger.error(f"Failed to seed config: {e}")
+    # --- Analytics & Reporting ---
+
+    def get_recent_transactions(self, limit=50) -> List[Dict[str, Any]]:
+        """Fetch recent sessions for Transaction Tab."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT 
+                        s.session_uuid,
+                        s.dump_id,
+                        s.start_time,
+                        s.end_time,
+                        s.plate_number,
+                        s.status,
+                        (SELECT COUNT(*) FROM dump_images i WHERE i.session_uuid = s.session_uuid) as img_count
+                    FROM dump_session s
+                    ORDER BY s.start_time DESC
+                    LIMIT ?
+                """, (limit,))
+                return [dict(row) for row in cursor.fetchall()]
+        except:
+            return []
+
+    def get_24h_stats(self) -> Dict[str, Any]:
+        """Fetch stats for the last 24 hours."""
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # 1. Total Trucks & Quantity (Mock quantity via count for now)
+                cursor.execute("""
+                    SELECT COUNT(*) as total_trucks 
+                    FROM dump_session 
+                    WHERE start_time >= datetime('now', '-1 day')
+                """)
+                total = cursor.fetchone()['total_trucks']
+                
+                # 2. Quality Stats (Mock: Assume 80% clean for demo if no classification)
+                # In real scenario, we'd join with classification results
+                clean = int(total * 0.8)
+                dirty = total - clean
+                
+                # 3. Contaminants (Mock)
+                contaminants = {
+                    'rocks': int(total * 0.05),
+                    'sand': int(total * 0.02),
+                    'leaves': int(total * 0.10)
+                }
+                
+                return {
+                    'total_trucks': total,
+                    'total_cane_tons': total * 15, # Assume 15 tons/truck
+                    'clean_cane': clean,
+                    'dirty_cane': dirty,
+                    'contaminants': contaminants
+                }
+        except:
+            return {}
+
+    def get_daily_report(self, date_str: str = None) -> List[Dict[str, Any]]:
+        """Fetch full report for a specific date (YYYY-MM-DD). Default today."""
+        if not date_str:
+            date_str = datetime.now().strftime("%Y-%m-%d")
+            
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT 
+                        s.session_uuid,
+                        s.dump_id,
+                        s.start_time,
+                        s.end_time,
+                        s.plate_number,
+                        s.status,
+                        s.merged_image_path
+                    FROM dump_session s
+                    WHERE date(s.start_time) = ?
+                    ORDER BY s.start_time DESC
+                """, (date_str,))
+                return [dict(row) for row in cursor.fetchall()]
+        except:
+            return []
+
+    def get_dashboard_charts_data(self) -> Dict[str, Any]:
+        """Fetch granular data for Dashboard Charts (Line, Pie, Bar)."""
+        data = {
+            'hourly_trend': [],
+            'quality_breakdown': {'Clean': 0, 'Dirty': 0, 'Contaminated': 0},
+            'process_breakdown': {'A': 0, 'B': 0, 'C': 0}
+        }
+        
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # 1. Hourly Trend (Last 24h)
+                cursor.execute("""
+                    SELECT strftime('%H', start_time) as hour_slot, COUNT(*) as cnt
+                    FROM dump_session
+                    WHERE start_time >= datetime('now', '-1 day')
+                    GROUP BY hour_slot
+                    ORDER BY hour_slot
+                """)
+                data['hourly_trend'] = [(row['hour_slot'], row['cnt']) for row in cursor.fetchall()]
+                
+                # 2. Quality Breakdown (Mock based on status for demo)
+                cursor.execute("SELECT COUNT(*) FROM dump_session WHERE start_time >= datetime('now', '-1 day')")
+                row = cursor.fetchone()
+                total = row[0] if row else 0
+                
+                data['quality_breakdown']['Clean'] = int(total * 0.75)
+                data['quality_breakdown']['Dirty'] = int(total * 0.20)
+                data['quality_breakdown']['Contaminated'] = total - (int(total * 0.75) + int(total * 0.20))
+
+                # 3. Process Breakdown (A/B/C)
+                cursor.execute("""
+                    SELECT substr(dump_id, 5, 1) as process_group, COUNT(*) as cnt
+                    FROM dump_session
+                    WHERE start_time >= datetime('now', '-1 day')
+                    GROUP BY process_group
+                """)
+                for row in cursor.fetchall():
+                    grp = row['process_group']
+                    if grp in data['process_breakdown']:
+                        data['process_breakdown'][grp] = row['cnt']
+                        
+        except Exception as e:
+            self.logger.error(f"Chart data error: {e}")
+            
+        return data
