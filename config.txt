@@ -11,6 +11,6 @@ lpr_conf = 0.40
 use_gpu = auto
 
 [NVR]
-ip = 192.168.1.100
+ip = 192.168.1.58
 username = admin
-password = password123
+password = Password@1
