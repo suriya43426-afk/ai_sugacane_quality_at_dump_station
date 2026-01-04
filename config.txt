@@ -1,5 +1,6 @@
 [DEFAULT]
 factory = MDC
+milling_process = A
 total_dumps = 8
 testing = 1
 
