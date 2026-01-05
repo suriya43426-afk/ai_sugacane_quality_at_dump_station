@@ -29,12 +29,16 @@ logging.basicConfig(
 )
 
 def load_config(config_path="config.txt"):
-    if not os.path.exists(config_path):
-        config_path = os.path.join("..", "config.txt")
-    
-    config = configparser.ConfigParser()
-    config.read(config_path)
-    return config
+    # Search up to project root
+    curr = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(4):
+        p = os.path.join(curr, config_path)
+        if os.path.exists(p):
+            config = configparser.ConfigParser()
+            config.read(p)
+            return config
+        curr = os.path.dirname(curr)
+    return None
 
 def get_s3_client():
     return boto3.client('s3', region_name=AWS_REGION)
@@ -181,9 +185,10 @@ def main():
     milling_process = config['DEFAULT'].get('milling_process', 'A')
     
     # Locate Source Directory Dynamically
-    source_root = os.path.join("ai_snap", "image", f"snap_image_{factory}")
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    source_root = os.path.join(root, "ai_snap", "image", f"snap_image_{factory}")
     if not os.path.exists(source_root):
-        source_root = os.path.join("image", f"snap_image_{factory}")
+        source_root = os.path.join(root, "image", f"snap_image_{factory}")
     
     if not os.path.exists(source_root):
         logging.error(f"Source directory not found: {source_root}")

@@ -9,6 +9,8 @@ from source.ui.qt_ui.sidebar import Sidebar
 from source.ui.qt_ui.overview_view import OverviewView
 from source.ui.qt_ui.single_view import SingleStationView
 from source.ui.qt_ui.modern_style import ModernStyle
+from source.services.cloud_sync import CloudSyncWorker
+from PySide6.QtCore import QThread
 
 class QtMainWindow(QMainWindow):
     def __init__(self, system, title="AI Sugarcane Quality Detection"):
@@ -53,6 +55,14 @@ class QtMainWindow(QMainWindow):
         self.timer = QTimer()
         self.timer.timeout.connect(self._update_state)
         self.timer.start(100) # 10 FPS
+        
+        # 3. Cloud Sync Integration (Unified Worker)
+        self._init_cloud_service()
+        
+        # 4. Status Bar (Unified Feedback)
+        self.status_bar = self.statusBar()
+        self.status_bar.showMessage("System Ready | Cloud Agent: Initializing...")
+        self.status_bar.setStyleSheet("color: white; background-color: #2D2D2D;")
 
     def _on_view_selected(self, view_id):
         if view_id == "overview":
@@ -79,7 +89,39 @@ class QtMainWindow(QMainWindow):
 
     def closeEvent(self, event):
         self.system.stop_processors()
+        
+        # Stop Cloud Worker safely
+        if hasattr(self, 'cloud_worker'):
+            self.cloud_worker.stop()
+            self.cloud_thread.quit()
+            self.cloud_thread.wait()
+            
         event.accept()
+
+    def _init_cloud_service(self):
+        """Initializes the background cloud sync worker in a separate thread."""
+        self.cloud_thread = QThread()
+        self.cloud_worker = CloudSyncWorker()
+        self.cloud_worker.moveToThread(self.cloud_thread)
+        
+        # Connect Signals
+        self.cloud_thread.started.connect(self.cloud_worker.run)
+        self.cloud_worker.status_updated.connect(self._on_cloud_status)
+        self.cloud_worker.progress_updated.connect(self._on_cloud_progress)
+        self.cloud_worker.error_occurred.connect(self._on_cloud_error)
+        
+        # Start
+        self.cloud_thread.start()
+
+    def _on_cloud_status(self, msg):
+        self.status_bar.showMessage(f"System Active | Cloud Agent: {msg}")
+
+    def _on_cloud_progress(self, uploaded, deleted):
+        self._on_cloud_status(f"Batch Done (Up: {uploaded}, Del: {deleted})")
+
+    def _on_cloud_error(self, err):
+        self.status_bar.showMessage(f"System Warning | Cloud Error: {err}")
+        self.status_bar.setStyleSheet("color: #FF5555; background-color: #2D2D2D;")
 
 if __name__ == "__main__":
     # Mock System for testing
