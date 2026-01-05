@@ -198,7 +198,7 @@ def process_channel(source_base, target_base, channel_folder, date_folder, thres
             # 2. Cloud Upload (The Optimization!)
             # Extract Process ID from channel name (e.g., ch1 -> A?)
             process_id = channel_folder.replace("ch", "") 
-            upload_to_datalake(target_path, filename, factory="MDC", process=process_id)
+            upload_to_datalake(target_path, filename, factory=factory, process=process_id)
             
             last_kept_hash = current_hash
             count += 1
@@ -235,19 +235,19 @@ def main():
     if config:
         factory = config['DEFAULT'].get('factory', 'MDC')
         
-    source_base = os.path.join("mdc_snap", "image", f"snap_image_{factory}")
-    target_base = os.path.join("mdc_snap", "image", f"ok_image_{factory}")
+    source_base = os.path.join("ai_snap", "image", f"snap_image_{factory}")
+    target_base = os.path.join("ai_snap", "image", f"ok_image_{factory}")
     
     # Path adjustment for dev environments
-    if not os.path.exists("mdc_snap") and os.path.exists("image"):
+    if not os.path.exists("ai_snap") and os.path.exists("image"):
          source_base = os.path.join("image", f"snap_image_{factory}")
          target_base = os.path.join("image", f"ok_image_{factory}")
 
     if not os.path.exists(source_base):
         print(f"Source directory not found: {source_base}")
-        if os.path.exists(os.path.join("mdc_snap", "image")):
-             source_base = os.path.join("mdc_snap", "image", f"snap_image_{factory}")
-             target_base = os.path.join("mdc_snap", "image", f"ok_image_{factory}")
+        if os.path.exists(os.path.join("ai_snap", "image")):
+             source_base = os.path.join("ai_snap", "image", f"snap_image_{factory}")
+             target_base = os.path.join("ai_snap", "image", f"ok_image_{factory}")
         else:
              return
 

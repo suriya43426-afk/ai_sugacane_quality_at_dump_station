@@ -11,12 +11,11 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 
 # ==============================================================================
-# CONFIGURATION
+# CONFIGURATION (DYNAMIC)
 # ==============================================================================
 AWS_REGION = "ap-southeast-1"
 S3_BUCKET = "mitrphol-ai-sugarcane-data-lake"
 GLUE_TABLE = "sugarcane_monitoring_log"
-LOCAL_SNAP_DIR = os.path.join("image", "snap_image_MDC") # Adjust based on user env
 BATCH_INTERVAL_SECONDS = 3600  # 1 Hour
 
 # Setup Logging
@@ -181,14 +180,14 @@ def main():
     factory = config['DEFAULT'].get('factory', 'MDC')
     milling_process = config['DEFAULT'].get('milling_process', 'A')
     
-    # Locate Source Directory
-    source_root = os.path.join("mdc_snap", "image", f"snap_image_{factory}")
+    # Locate Source Directory Dynamically
+    source_root = os.path.join("ai_snap", "image", f"snap_image_{factory}")
     if not os.path.exists(source_root):
-        # Fallback for different envs
         source_root = os.path.join("image", f"snap_image_{factory}")
     
     if not os.path.exists(source_root):
         logging.error(f"Source directory not found: {source_root}")
+        # Try to create it if it doesn't exist? (Optional)
         return
 
     logging.info(f"Service Started. Monitoring {source_root}")
