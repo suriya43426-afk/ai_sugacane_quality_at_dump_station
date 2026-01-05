@@ -60,6 +60,8 @@ def process_channel(source_base, target_base, channel_folder, date_folder, thres
     
     if not files:
         return f"{channel_folder}/{date_folder}: Skipped (No images)"
+
+    print(f"[STARTED] {channel_folder}/{date_folder} ({len(files)} images)")
     
     # Create target directory if it doesn't exist (only if we have files to process)
     os.makedirs(target_dir, exist_ok=True)
@@ -84,6 +86,7 @@ def process_channel(source_base, target_base, channel_folder, date_folder, thres
             last_kept_img_path = current_img_path
             count += 1
             
+    print(f"[FINISHED] {channel_folder}/{date_folder} - Kept {count}/{len(files)}")
     return f"{channel_folder}/{date_folder}: Processed {len(files)} imgs, Kept {count}."
 
 def main():
