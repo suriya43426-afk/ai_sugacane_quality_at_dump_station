@@ -32,6 +32,7 @@ class DumpProcessor(threading.Thread):
         self.plate_number = "UNKNOWN"
         self.session_uuid = None
         self.latest_frames = {} 
+        self.latest_cls_res = {} # Store real AI results
 
     def run(self):
         self.log.info(f"Starting processor for {self.dump_id}")
@@ -52,13 +53,21 @@ class DumpProcessor(threading.Thread):
                         
                         if ret: frames[ch] = frame
                 
-                # Update latest_frames for UI consumption
-                self.latest_frames = frames.copy()
+                # Update latest_frames for UI consumption with STANDARDIZED KEYS
+                # Sort keys to ensure consistency: 1st key = LPR, 2nd key = AI (Top)
+                sorted_keys = sorted(frames.keys())
+                normalized_frames = {}
+                if len(sorted_keys) > 0: normalized_frames['LPR'] = frames[sorted_keys[0]]
+                if len(sorted_keys) > 1: normalized_frames['AI'] = frames[sorted_keys[1]]
+                
+                self.latest_frames = normalized_frames
                 
                 # 2. Analyze at ~2 FPS (Optimized for CPU stability)
                 now = time.time()
                 if now - last_analysis > 0.5:
                     last_analysis = now
+                    # Pass raw frames to processing or adapted ones?
+                    # The internal processing also uses hardcoded CH101/CH201. We should fix that too.
                     self._process_cycle(frames)
                 
                 time.sleep(0.01)
@@ -145,18 +154,71 @@ class DumpProcessor(threading.Thread):
         return None
 
     def _process_cycle(self, frames):
-        f_frame = frames.get('CH101')
-        t_frame = frames.get('CH201')
+        # Dynamic Key Resolution
+        sorted_keys = sorted(frames.keys())
+        if len(sorted_keys) < 2: return # Need both
+        
+        f_key = sorted_keys[0] # LPR / Front
+        t_key = sorted_keys[1] # AI / Top
+        
+        f_frame = frames.get(f_key)
+        t_frame = frames.get(t_key)
         
         if f_frame is None or t_frame is None:
             return
 
-        # 1. AI Analysis
-        # CH101 -> LPR / Truck
-        lpr_res = self.lpr_engine.detect(f_frame, skip_ocr=True)
+        # Initialize normalized container for UI updates
+        normalized_frames = {'LPR': f_frame, 'AI': t_frame}
+
+        # 1. AI Analysis & Visualization
+        # Odd Channels (1,3,5...) -> LPR [classification.pt]
+        # Even Channels (2,4,6...) -> AI [objectdetection.pt]
         
-        # CH201 -> Classification / Cane
-        cls_res = self.cls_engine.analyze(t_frame)
+        # Parse Dump ID Number (e.g., MDC-A-01 -> 1)
+        try:
+            dump_num = int(self.dump_id.split('-')[-1])
+        except:
+            dump_num = 1 # Fallback
+            
+        is_odd = (dump_num % 2 != 0)
+        
+        if is_odd:
+            # --- CHANNEL ODD: LPR ---
+            lpr_res = self.lpr_engine.detect(f_frame, skip_ocr=False) # Enable OCR to show text
+            
+            # Draw LPR BBox
+            if lpr_res:
+                x1, y1, x2, y2 = lpr_res.bbox
+                cv2.rectangle(f_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                if lpr_res.text:
+                    cv2.putText(f_frame, lpr_res.text, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+            
+            # Update Annotated Frame
+            normalized_frames['LPR'] = f_frame
+            
+            # Skip AI Engine
+            cls_res = {} 
+            
+        else:
+            # --- CHANNEL EVEN: AI Classification ---
+            lpr_res = None
+            cls_res = self.cls_engine.analyze(t_frame)
+            
+            # Draw AI BBox (Trash/Cane)
+            detections = cls_res.get('detections', [])
+            for (x1, y1, x2, y2) in detections:
+                cv2.rectangle(t_frame, (x1, y1), (x2, y2), (0, 165, 255), 2) # Orange
+                
+            # Update Annotated Frame
+            normalized_frames['AI'] = t_frame
+            
+        # Update Results for UI Fetching
+        self.latest_cls_res = cls_res
+        if lpr_res and lpr_res.text:
+            self.plate_number = lpr_res.text
+
+        # Update Latest Frames with ANNOTATED versions
+        self.latest_frames = normalized_frames
         
         # 2. Update FSM
         # Mapping model results to FSM inputs

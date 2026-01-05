@@ -1,16 +1,19 @@
 class ModernStyle:
-    # Color Palette: Mitr Phol (60-30-10)
-    # 60% Primary
-    BG_MAIN = "#F4F7FE"      # Ice Blue White (Background)
-    BG_CARD = "#FFFFFF"      # Pure White (Cards)
+    # Color Palette: Mitr Phol (Clean & Minimal: 70-20-10)
+    # 70% White / Neutral (Backgrounds, Cards)
+    BG_MAIN = "#F8FAFC"      # Clean Slate White (App BG)
+    BG_CARD = "#FFFFFF"      # Pure White (Card BG)
+    BORDER  = "#E2E8F0"      # Subtle Border
     
-    # 30% Secondary
-    ACCENT  = "#3B82F6"      # Vivid Blue (Active States, Highlights)
-    BTN_BG  = "#E3F2FD"      # Very Light Blue (Button Base)
+    # 20% Sky Blue (Secondary, Highlights, Backgrounds of active items)
+    ACCENT_BG = "#E0F2FE"    # Very Light Sky Blue (Stats BG, Hover)
+    ACCENT_FG = "#0EA5E9"    # Sky Blue (Icons, Highlights)
+    BTN_BG    = "#F1F5F9"    # Light Grey/Blue for inactive buttons
     
-    # 10% Tertiary
-    TEXT_PRI = "#1E3A8A"     # Deep Blue (Headers)
-    TEXT_SEC = "#64748B"     # Slate Grey (Body)
+    # 10% Deep Blue (Primary, Text, Headers)
+    TEXT_PRI = "#0F172A"     # Dark Navy (Main Text)
+    TEXT_SEC = "#475569"     # Slate Grey (Secondary Text)
+    PRIMARY  = "#1E40AF"     # Deep Blue (Active Buttons, headers)
     
     @staticmethod
     def get_style():
@@ -70,11 +73,11 @@ class ModernStyle:
         
         QPushButton#NavButton:hover {{
             background-color: {ModernStyle.BTN_BG};
-            color: {ModernStyle.ACCENT};
+            color: {ModernStyle.ACCENT_FG};
         }}
         
         QPushButton#NavButton:checked {{
-            background-color: {ModernStyle.ACCENT};
+            background-color: {ModernStyle.PRIMARY};
             color: white;
         }}
         

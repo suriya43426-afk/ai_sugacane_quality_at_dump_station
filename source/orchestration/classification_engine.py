@@ -35,6 +35,7 @@ class ClassificationEngine:
         dumping = False
         contamination = "NONE"
 
+        detections = []
         if results and (hasattr(results[0], 'boxes') and results[0].boxes is not None and len(results[0].boxes) > 0):
             # Detection model path
             cane_detected = True
@@ -43,8 +44,9 @@ class ClassificationEngine:
             for box in results[0].boxes:
                 # cls 0 = sugarcane
                 if int(box.cls) == 0:
-                    x1, y1, x2, y2 = box.xyxy[0]
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])
                     cane_area += (x2 - x1) * (y2 - y1)
+                    detections.append((x1, y1, x2, y2))
                 
             cane_percentage = min(100, int((cane_area / total_area) * 200)) # Scale factor
             if 10 < cane_percentage < 90:
@@ -65,5 +67,6 @@ class ClassificationEngine:
             'cane_detected': cane_detected,
             'cane_percentage': cane_percentage,
             'dumping': dumping,
-            'contamination': contamination
+            'contamination': contamination,
+            'detections': detections
         }

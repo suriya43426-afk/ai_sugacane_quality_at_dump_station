@@ -1,148 +1,140 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QSizePolicy)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap, QImage
-import cv2
 
 class SingleStationView(QWidget):
     def __init__(self, system, parent=None):
         super().__init__(parent)
         self.system = system
-        self.dump_id = None # Set when showing
-        
-        # Style
-        self.setObjectName("SingleStationView")
+        self.dump_id = None
         
         # Main Layout
-        self.main_layout = QVBoxLayout(self)
-        self.main_layout.setContentsMargins(20, 20, 20, 20)
-        self.main_layout.setSpacing(20)
+        self.layout = QHBoxLayout(self)
+        self.layout.setContentsMargins(15, 15, 15, 15)
+        self.layout.setSpacing(20)
         
-        # 1. Header
-        self._build_header()
+        # --- LEFT COLUMN: Video Feeds (VStack) ---
+        self.video_col = QVBoxLayout()
+        self.video_col.setSpacing(10)
         
-        # 2. Main Content (Images)
-        self._build_image_area()
+        # LPR Camera
+        self.frame_lpr = self._create_video_frame("FRONT CAMERA (LPR)")
+        self.img_lpr = self.frame_lpr.findChild(QLabel, "video_label")
+        self.video_col.addWidget(self.frame_lpr, 1)
         
-        # 3. Footer / Details
-        self._build_footer()
+        # AI Camera
+        self.frame_ai = self._create_video_frame("TOP CAMERA (AI)")
+        self.img_ai = self.frame_ai.findChild(QLabel, "video_label")
+        self.video_col.addWidget(self.frame_ai, 1)
         
-        # Placeholder State
-        self.update_state({'dump_id': '-', 'state': 'SELECT STATION', 'status': 'IDLE', 'lpr': '-'})
+        self.layout.addLayout(self.video_col, 2) # Video takes more space
+        
+        # --- RIGHT COLUMN: Info Panel ---
+        self.info_col = QVBoxLayout()
+        self.info_col.setSpacing(15)
+        
+        # Header Info
+        self.header_panel = QFrame()
+        self.header_panel.setStyleSheet("background-color: white; border-radius: 12px; padding: 10px;")
+        hp_layout = QVBoxLayout(self.header_panel)
+        
+        self.title_lbl = QLabel("STATION : -")
+        self.title_lbl.setStyleSheet("font-size: 24px; font-weight: 800; color: #1E3A8A;")
+        hp_layout.addWidget(self.title_lbl)
+        
+        self.state_lbl = QLabel("STATE : IDLE")
+        self.state_lbl.setStyleSheet("font-size: 16px; font-weight: 700; color: #64748B;")
+        hp_layout.addWidget(self.state_lbl)
+        
+        self.info_col.addWidget(self.header_panel)
+        
+        # Data Panel
+        self.data_panel = QFrame()
+        self.data_panel.setStyleSheet("background-color: white; border-radius: 12px; padding: 20px;")
+        dp_layout = QVBoxLayout(self.data_panel)
+        dp_layout.setSpacing(20)
+        
+        # Metrics
+        self.trash_val = self._add_info_row(dp_layout, "TRASH DETECTED", "0%", "#0EA5E9", large=True)
+        self.lpr_val = self._add_info_row(dp_layout, "PLATE NUMBER", "-", "#0F172A")
+        self.trans_val = self._add_info_row(dp_layout, "TRANSACTION ID", "-", "#0F172A")
+        self.time_val = self._add_info_row(dp_layout, "LAST UPDATE", "-", "#64748B")
+        
+        dp_layout.addStretch()
+        self.info_col.addWidget(self.data_panel)
+        
+        self.layout.addLayout(self.info_col, 1)
+
+    def _create_video_frame(self, title):
+        frame = QFrame()
+        frame.setStyleSheet("background-color: #0F172A; border-radius: 8px;")
+        layout = QVBoxLayout(frame)
+        layout.setContentsMargins(5, 5, 5, 5)
+        
+        title_lbl = QLabel(title)
+        title_lbl.setStyleSheet("color: white; font-size: 10px; font-weight: 700; background: rgba(0,0,0,0.5); padding: 2px 8px; border-radius: 4px;")
+        layout.addWidget(title_lbl, 0, Qt.AlignLeft | Qt.AlignTop)
+        
+        lbl = QLabel()
+        lbl.setObjectName("video_label")
+        lbl.setAlignment(Qt.AlignCenter)
+        lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
+        layout.addWidget(lbl, 1)
+        return frame
+
+    def _add_info_row(self, layout, label, value, color, large=False):
+        row = QVBoxLayout()
+        row.setSpacing(2)
+        
+        lbl = QLabel(label)
+        lbl.setStyleSheet("color: #64748B; font-size: 11px; font-weight: 700; letter-spacing: 1px;")
+        row.addWidget(lbl)
+        
+        val = QLabel(value)
+        font_size = "32px" if large else "18px"
+        val.setStyleSheet(f"color: {color}; font-size: {font_size}; font-weight: 800; font-family: 'Consolas', monospace;")
+        row.addWidget(val)
+        
+        layout.addLayout(row)
+        return val
 
     def set_station(self, dump_id):
         self.dump_id = dump_id
-        self.title_lbl.setText(dump_id)
-        # Trigger immediate update if possible
-        self.update_view()
-
-    def _build_header(self):
-        header_widget = QWidget()
-        h_layout = QHBoxLayout(header_widget)
-        h_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Title
-        self.title_lbl = QLabel("SELECT STATION")
-        self.title_lbl.setStyleSheet("font-size: 32px; font-weight: 800; color: #1E3A8A;")
-        h_layout.addWidget(self.title_lbl)
-        
-        h_layout.addStretch()
-        
-        # Status
-        self.status_lbl = QLabel("● IDLE")
-        self.status_lbl.setStyleSheet("font-size: 24px; font-weight: 700; color: #64748B;")
-        h_layout.addWidget(self.status_lbl)
-        
-        self.main_layout.addWidget(header_widget)
-
-    def _build_image_area(self):
-        # We want 2 images. On 1080p (16:9), if we stack them vertically, we get two 1920x540 strips (32:9).
-        # Camera is 16:9.
-        # If we fill width 1700px -> Height = 1700 * 9 / 16 = 956px.
-        # Two images height = 1912px > 1080px.
-        # So Vertical Stack WILL SCROLL or SCALE DOWN.
-        # If we do Horizontal Stack: Width 850px -> Height 478px.
-        # 478px is less than screen height. Fits well.
-        # Decision: Side-by-Side for Fullscreen Single View to maximize 16:9 coverage?
-        # OR Grid User asked for "Full Screen".
-        # Let's try Vertical but allow scaling (Downsizing to fit height).
-        
-        self.img_container = QWidget()
-        self.img_layout = QVBoxLayout(self.img_container) # Stacked Vertical usually preferred for surveillance
-        
-        # Img 1
-        self.img_lpr = QLabel()
-        self.img_lpr.setAlignment(Qt.AlignCenter)
-        self.img_lpr.setStyleSheet("background-color: transparent; border-radius: 8px;")
-        self.img_lpr.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
-        self.img_layout.addWidget(self.img_lpr, 1)
-        
-        # Img 2
-        self.img_ai = QLabel()
-        self.img_ai.setAlignment(Qt.AlignCenter)
-        self.img_ai.setStyleSheet("background-color: transparent; border-radius: 8px;")
-        self.img_ai.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Expanding)
-        self.img_layout.addWidget(self.img_ai, 1)
-        
-        self.main_layout.addWidget(self.img_container, 1) # Expand
-
-    def _build_footer(self):
-        f_widget = QWidget()
-        f_layout = QHBoxLayout(f_widget)
-        
-        self.info_lbl = QLabel("LPR Result: -")
-        self.info_lbl.setStyleSheet("font-size: 24px; font-weight: bold; color: #1E3A8A;")
-        f_layout.addWidget(self.info_lbl)
-        
-        self.main_layout.addWidget(f_widget)
+        self.title_lbl.setText(f"STATION : {dump_id}")
 
     def update_view(self):
         if not self.dump_id: return
         
-        # Fetch State
-        # In a real app, maybe get single state from system
+        # Get State
         states = self.system.get_processor_states()
-        target = next((s for s in states if s['dump_id'] == self.dump_id), None)
+        state = next((s for s in states if s['dump_id'] == self.dump_id), None)
         
-        if target:
-            self.update_state(target)
+        if state:
+            self.state_lbl.setText(f"STATE : {state.get('state', '-')}")
+            self.trash_val.setText(f"{state.get('trash_pct', 0)}%")
+            self.lpr_val.setText(state.get('lpr', '-'))
+            self.trans_val.setText(state.get('transaction_id', '-'))
+            self.time_val.setText(state.get('timestamp', '-'))
             
-        # Fetch Frames
+            # Color coding
+            trash = state.get('trash_pct', 0)
+            color = "#EF4444" if trash > 30 else "#0EA5E9"
+            self.trash_val.setStyleSheet(f"color: {color}; font-size: 32px; font-weight: 800;")
+
+        # Get Frames
         frames = self.system.get_latest_frames(self.dump_id)
         if frames:
-            self.update_images(frames)
-
-    def update_state(self, state_data):
-        # Header
-        self.title_lbl.setText(state_data.get('dump_id', '-'))
-        
-        status = state_data.get('status')
-        state = state_data.get('state')
-        
-        color = "#22C55E" if status == 'RUNNING' else "#EF4444"
-        self.status_lbl.setText(f"● {state}")
-        self.status_lbl.setStyleSheet(f"font-size: 24px; font-weight: 700; color: {color};")
-        
-        # Footer
-        self.info_lbl.setText(f"LPR: {state_data.get('lpr', '-')}")
-
-    def update_images(self, frames):
-        self._set_image(self.img_lpr, frames.get('CH101'))
-        self._set_image(self.img_ai, frames.get('CH201'))
+            self._set_image(self.img_lpr, frames.get('LPR'))
+            self._set_image(self.img_ai, frames.get('AI'))
 
     def _set_image(self, label, cv_frame):
         if cv_frame is None: return
         
-        # Keep high res for single view? Or 720p?
-        # Let's go 720p (1280x720) for better quality on full screen
-        resized = cv2.resize(cv_frame, (1280, 720), interpolation=cv2.INTER_AREA)
-        
-        height, width, channel = resized.shape
+        import cv2
+        height, width, channel = cv_frame.shape
         bytes_per_line = 3 * width
-        q_img = QImage(resized.data, width, height, bytes_per_line, QImage.Format_BGR888)
-        
-        pixmap = QPixmap.fromImage(q_img)
+        q_img = QImage(cv_frame.data, width, height, bytes_per_line, QImage.Format_BGR888)
         
         if not label.size().isEmpty():
-            pixmap = pixmap.scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            
-        label.setPixmap(pixmap)
+            pixmap = QPixmap.fromImage(q_img).scaled(label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            label.setPixmap(pixmap)

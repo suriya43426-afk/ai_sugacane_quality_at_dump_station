@@ -43,8 +43,8 @@ class SugarcaneSystem:
         
         # Load Models
         self.log.info("Initializing AI Models...")
-        self.lpr_engine = LPREngine(model_path="models/objectdetection.pt", logger=self.log, global_lock=self.ai_lock)
-        self.cls_engine = ClassificationEngine(model_path="models/classification.pt", logger=self.log, global_lock=self.ai_lock)
+        self.lpr_engine = LPREngine(model_path="models/classification.pt", logger=self.log, global_lock=self.ai_lock)
+        self.cls_engine = ClassificationEngine(model_path="models/objectdetection.pt", logger=self.log, global_lock=self.ai_lock)
         
         self.processors = []
         self.dumps = []
@@ -72,14 +72,18 @@ class SugarcaneSystem:
             p.running = False
 
     def get_processor_states(self):
-        """Returns a list of state dictionaries for the UI."""
+        """Returns a list of state dictionaries for the UI with real AI data."""
         states = []
+        from datetime import datetime
         for p in self.processors:
             states.append({
                 'dump_id': p.dump_id,
                 'status': 'RUNNING' if p.is_alive() else 'STOPPED',
                 'state': p.sm.state.name,
-                'lpr': p.plate_number if p.plate_number else "-"
+                'lpr': p.plate_number if p.plate_number else "-",
+                'trash_pct': p.latest_cls_res.get('cane_percentage', 0), # Real AI value
+                'transaction_id': p.session_uuid[-8:] if p.session_uuid else "-",
+                'timestamp': datetime.now().strftime("%d-%m-%Y %H:%M:%S")
             })
         return states
 

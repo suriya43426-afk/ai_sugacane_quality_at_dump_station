@@ -34,17 +34,31 @@ class QtMainWindow(QMainWindow):
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
         
-        # 1. Sidebar (Compact)
+        # 1. Global Sidebar Container (Can be moved)
+        self.sidebar_container = QWidget()
+        self.sidebar_layout = QVBoxLayout(self.sidebar_container)
+        self.sidebar_layout.setContentsMargins(0,0,0,0)
+        
         self.sidebar = Sidebar(self)
         self.sidebar.view_selected.connect(self._on_view_selected)
-        self.main_layout.addWidget(self.sidebar)
+        self.sidebar_layout.addWidget(self.sidebar)
         
-        # 2. Stacked Content (Overview vs Single)
+        # Initial placement: Let the root layout have it first
+        self.main_layout.addWidget(self.sidebar_container)
+        
+        # 2. Stacked Content
         self.content_stack = QStackedWidget()
         self.main_layout.addWidget(self.content_stack)
         
         # Page 0: Overview
-        self.overview_view = OverviewView(self.system)
+        # We pass self.sidebar_container so Overview can swallow it
+        self.overview_view = OverviewView(self.system, sidebar=self.sidebar_container)
+        self.overview_view.station_clicked.connect(self._on_view_selected)
+        self.overview_view.order_changed.connect(self.sidebar.update_button_order)
+        
+        # Ensure initial order is synced (Manual trigger after connection)
+        self.sidebar.update_button_order(self.overview_view.dump_order)
+        
         self.content_stack.addWidget(self.overview_view)
         
         # Page 1: Single Dump View
@@ -66,9 +80,15 @@ class QtMainWindow(QMainWindow):
 
     def _on_view_selected(self, view_id):
         if view_id == "overview":
+            # Re-insert into Overview Grid
+            self.overview_view.integrate_sidebar(self.sidebar_container)
             self.content_stack.setCurrentIndex(0)
         else:
-            # Assume view_id is dump_id e.g. "MDC-A-01"
+            # Move Sidebar back to Global Left for Single View
+            self.main_layout.insertWidget(0, self.sidebar_container)
+            self.sidebar_container.show()
+            
+            # Update Single View
             self.single_view.set_station(view_id)
             self.content_stack.setCurrentIndex(1)
 
