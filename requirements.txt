@@ -16,3 +16,4 @@ matplotlib==3.9.2
 scikit-image
 tqdm
 psycopg2-binary
+boto3
