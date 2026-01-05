@@ -10,7 +10,7 @@ from datetime import datetime
 from PySide6.QtCore import QObject, Signal, QThread
 
 # Reuse existing Logic from ai_batch_processor (adapted for Class)
-from ai_batch_processor import load_config, is_corrupted, parse_timestamp, get_s3_client
+from source.services.ai_batch_processor import load_config, is_corrupted, parse_timestamp, get_s3_client
 
 class CloudSyncWorker(QObject):
     """
