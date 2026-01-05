@@ -38,8 +38,8 @@ def is_corrupted(image, threshold=0.05):
     # Or just check simple BGR thresholds for white/pink blocks.
     
     # 1. Check for White Blocks (common bug)
-    # Define "White" as pixels > 240 in all channels
-    white_mask = np.all(image > 250, axis=-1)
+    # Relaxed threshold to 225 to catch noisy/compressed white blocks
+    white_mask = np.all(image > 225, axis=-1)
     white_ratio = np.sum(white_mask) / white_mask.size
     
     if white_ratio > threshold:
@@ -52,6 +52,15 @@ def is_corrupted(image, threshold=0.05):
     pink_ratio = np.sum(pink_mask) / pink_mask.size
     
     if pink_ratio > threshold:
+        return True
+
+    # 3. Check for Green artifacts (Green screen glitch)
+    # Green is high Green, low Red and Blue
+    # G > 200, R < 100, B < 100
+    green_mask = (image[:,:,1] > 200) & (image[:,:,2] < 100) & (image[:,:,0] < 100)
+    green_ratio = np.sum(green_mask) / green_mask.size
+    
+    if green_ratio > threshold:
         return True
         
     return False
