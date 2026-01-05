@@ -129,6 +129,21 @@ class Sidebar(QWidget):
             self.dump_btns.append(btn)
             
         ctrl_layout.addLayout(dump_grid)
+        
+        # Diagnostics Button
+        btn_diag = QPushButton("DIAGNOSTICS")
+        btn_diag.setCursor(Qt.PointingHandCursor)
+        btn_diag.setStyleSheet("""
+            QPushButton {
+                background-color: #F8FAFC; border: 1px dashed #94A3B8; color: #64748B; border-radius: 8px; padding: 10px; font-weight: 700; margin-top: 10px;
+            }
+            QPushButton:hover {
+                background-color: #F1F5F9; border-color: #3B82F6; color: #3B82F6;
+            }
+        """)
+        btn_diag.clicked.connect(lambda: self.view_selected.emit("diagnostics"))
+        ctrl_layout.addWidget(btn_diag)
+        
         self.layout.addWidget(ctrl_widget)
 
     def update_clock(self, time_str):
