@@ -33,14 +33,22 @@ def compare_images(img_path1, img_path2):
     img2_gray = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
     
     # Ensure they are the same size
-    if img1_gray.shape != img2_gray.shape:
-        img2_gray = cv2.resize(img2_gray, (img1_gray.shape[1], img1_gray.shape[0]))
+    # Resize for performance (SSIM is slow on full HD)
+    # Maintain aspect ratio isn't strictly necessary for just change detection, 
+    # but let's resize to fixed width 640
+    target_width = 640
+    h, w = img1_gray.shape
+    scale = target_width / float(w)
+    new_h = int(h * scale)
+    
+    img1_small = cv2.resize(img1_gray, (target_width, new_h))
+    img2_small = cv2.resize(img2_gray, (target_width, new_h))
 
     # Apply Gaussian Blur to reduce noise sensitivity
-    img1_gray = cv2.GaussianBlur(img1_gray, (5, 5), 0)
-    img2_gray = cv2.GaussianBlur(img2_gray, (5, 5), 0)
+    img1_small = cv2.GaussianBlur(img1_small, (5, 5), 0)
+    img2_small = cv2.GaussianBlur(img2_small, (5, 5), 0)
     
-    score, _ = ssim(img1_gray, img2_gray, full=True, win_size=3)
+    score, _ = ssim(img1_small, img2_small, full=True, win_size=3)
     return score
 
 def process_channel_task(args):
@@ -85,6 +93,9 @@ def process_channel(source_base, target_base, channel_folder, date_folder, thres
             shutil.copy2(current_img_path, os.path.join(target_dir, files[i]))
             last_kept_img_path = current_img_path
             count += 1
+        
+        if i % 200 == 0:
+             print(f"[PROGRESS] {channel_folder}/{date_folder} - {i}/{len(files)}...", flush=True)
             
     print(f"[FINISHED] {channel_folder}/{date_folder} - Kept {count}/{len(files)}")
     return f"{channel_folder}/{date_folder}: Processed {len(files)} imgs, Kept {count}."
