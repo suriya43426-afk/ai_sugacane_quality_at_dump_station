@@ -5,6 +5,7 @@ import numpy as np
 from skimage.metrics import structural_similarity as ssim
 from datetime import datetime
 import configparser
+from tqdm import tqdm
 
 def load_config(config_path="config.txt"):
     if not os.path.exists(config_path):
@@ -32,19 +33,21 @@ def compare_images(img_path1, img_path2):
     # Ensure they are the same size
     if img1_gray.shape != img2_gray.shape:
         img2_gray = cv2.resize(img2_gray, (img1_gray.shape[1], img1_gray.shape[0]))
+
+    # Apply Gaussian Blur to reduce noise sensitivity
+    img1_gray = cv2.GaussianBlur(img1_gray, (5, 5), 0)
+    img2_gray = cv2.GaussianBlur(img2_gray, (5, 5), 0)
     
     score, _ = ssim(img1_gray, img2_gray, full=True, win_size=3)
     return score
 
-def process_channel(source_base, target_base, channel_folder, date_folder, threshold=0.95):
+def process_channel(source_base, target_base, channel_folder, date_folder, threshold=0.80):
     """Process images in a specific channel and date folder."""
     source_dir = os.path.join(source_base, channel_folder, date_folder)
     target_dir = os.path.join(target_base, channel_folder, date_folder)
     
     if not os.path.exists(source_dir):
         return
-    
-    os.makedirs(target_dir, exist_ok=True)
     
     # List all jpg files and sort them by name (which includes timestamp)
     files = sorted([f for f in os.listdir(source_dir) if f.lower().endswith(('.jpg', '.jpeg'))])
@@ -54,13 +57,17 @@ def process_channel(source_base, target_base, channel_folder, date_folder, thres
     
     print(f"Processing {channel_folder}/{date_folder}: {len(files)} images found.")
     
+    # Create target directory if it doesn't exist (only if we have files to process)
+    os.makedirs(target_dir, exist_ok=True)
+
     # Always copy the first image
     first_img = files[0]
     shutil.copy2(os.path.join(source_dir, first_img), os.path.join(target_dir, first_img))
     last_kept_img_path = os.path.join(source_dir, first_img)
     count = 1
     
-    for i in range(1, len(files)):
+    # Use tqdm for progress bar
+    for i in tqdm(range(1, len(files)), desc=f"Filtering {channel_folder}", unit="img"):
         current_img_path = os.path.join(source_dir, files[i])
         
         score = compare_images(last_kept_img_path, current_img_path)
@@ -71,7 +78,7 @@ def process_channel(source_base, target_base, channel_folder, date_folder, thres
             last_kept_img_path = current_img_path
             count += 1
             
-    print(f"  -> Kept {count} unique images.")
+    print(f"  -> Kept {count} unique images out of {len(files)}.")
 
 def main():
     config = load_config()
@@ -89,7 +96,12 @@ def main():
 
     if not os.path.exists(source_base):
         print(f"Source directory not found: {source_base}")
-        return
+        # Try to find it relative to current dir if run from root but folder structure is slightly different
+        if os.path.exists(os.path.join("mdc_snap", "image")):
+             source_base = os.path.join("mdc_snap", "image", f"snap_image_{factory}")
+             target_base = os.path.join("mdc_snap", "image", f"ok_image_{factory}")
+        else:
+             return
 
     # Iterate through channels
     for ch_name in sorted(os.listdir(source_base)):
