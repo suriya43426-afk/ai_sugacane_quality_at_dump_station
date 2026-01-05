@@ -1,10 +1,11 @@
 import psycopg2
 from datetime import datetime
 import sys
+import socket
 
 # Configuration
 HOST = "mitrphol-redshift-prod.cgffftialzgr.ap-southeast-1.redshift.amazonaws.com"
-PORT = "5439"
+PORT = 5439 # Use integer for socket
 DB_NAME = "mitrphol_prod"
 USER = "cane_quality_user"
 PASS = "CaneQuality@Mitr2026"
@@ -12,14 +13,36 @@ PASS = "CaneQuality@Mitr2026"
 # Table Name - (Assuming a reasonable name, please update if widely different)
 TABLE_NAME = "ai_sugarcane_log" 
 
+def check_port(host, port, timeout=5):
+    try:
+        print(f"[DEBUG] Checking if port {port} is open on {host}...")
+        with socket.create_connection((host, port), timeout=timeout):
+            print(f"[DEBUG] Port {port} is OPEN.")
+            return True
+    except socket.timeout:
+        print(f"[DEBUG] Port {port} check TIMED OUT (likely blocked or no route).")
+        return False
+    except Exception as e:
+        print(f"[DEBUG] Port {port} check FAILED: {e}")
+        return False
+
 def test_connection():
     print("="*50)
     print("AWS Redshift Connection Test")
     print("="*50)
     
+    # Pre-check port reachability
+    if not check_port(HOST, PORT):
+        print("\n[CRITICAL] Cannot reach Redshift server on port 5439.")
+        print("Possible causes:")
+        print("1. Your PC is not on the same network/VPN as Redshift.")
+        print("2. Port 5439 is blocked by a Firewall (PC or Network).")
+        print("3. The hostname resolved to a private IP (10.x.x.x) which is not reachable.")
+        return
+
     conn = None
     try:
-        print(f"[INFO] Connecting to {HOST}...")
+        print(f"[INFO] Connecting to {HOST} via psycopg2...")
         conn = psycopg2.connect(
             host=HOST,
             port=PORT,
