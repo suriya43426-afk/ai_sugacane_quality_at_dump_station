@@ -1,5 +1,6 @@
 import boto3
 import time
+import json
 
 # ==============================================================================
 # CONFIGURATION
@@ -53,7 +54,7 @@ def setup_resources():
         print(f"    INFO: Bucket '{BUCKET_NAME}' already exists (owned by you).")
     except Exception as e:
         print(f"    ERROR: Could not create bucket: {e}")
-        return
+        # Continue to Glue even if S3 fails - maybe the bucket exists or user lacks S3 but has Glue perms
 
     # 2. Create Glue Database
     print(f"\n[2] Checking/Creating Glue Database: {DB_NAME}")
@@ -65,9 +66,16 @@ def setup_resources():
     except glue.exceptions.AlreadyExistsException:
         print(f"    INFO: Database '{DB_NAME}' already exists.")
 
-    # 3. Create Glue Table (The "SageMaker Table")
+    # 3. Create Glue Table (Manual & Robust)
     print(f"\n[3] Creating Glue Table: {TABLE_NAME}")
     try:
+        # Delete first to ensure fresh metadata
+        try:
+            glue.delete_table(DatabaseName=DB_NAME, Name=TABLE_NAME)
+            print(f"    INFO: Existing table deleted for refresh.")
+        except glue.exceptions.EntityNotFoundException:
+            pass
+
         glue.create_table(
             DatabaseName=DB_NAME,
             TableInput={
@@ -79,25 +87,30 @@ def setup_resources():
                     'OutputFormat': 'org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat',
                     'SerdeInfo': {
                         'SerializationLibrary': 'org.openx.data.jsonserde.JsonSerDe',
-                        'Parameters': {'paths': 'factory,process,dump_no,plate,ai_result,captured_at,image_s3_path,agent_id'}
+                        'Parameters': {
+                            'ignore.malformed.json': 'TRUE', 
+                            'dots.in.keys': 'FALSE', 
+                            'case.insensitive': 'TRUE',
+                            'mapping': 'TRUE'
+                        }
                     }
                 },
                 'TableType': 'EXTERNAL_TABLE',
                 'Parameters': {'classification': 'json'}
             }
         )
-        print(f"    SUCCESS: Table '{TABLE_NAME}' created.")
-    except glue.exceptions.AlreadyExistsException:
-        print(f"    INFO: Table '{TABLE_NAME}' already exists (Skipping).")
+        print(f"    SUCCESS: Table '{TABLE_NAME}' created with OpenX SerDe.")
+        
     except Exception as e:
         print(f"    ERROR: Create Table failed: {e}")
 
     print("\n-----------------------------------------------------------")
     print("SETUP COMPLETE!")
-    print("How to access from SageMaker:")
-    print(f"1. Open SageMaker Notebook")
-    print(f"2. Use code: df = wr.athena.read_sql_query('SELECT * FROM {TABLE_NAME}', database='{DB_NAME}')")
+    print(f"Query now: SELECT * FROM {TABLE_NAME}")
     print("-----------------------------------------------------------")
+
+# Removed Manual Fallback function since we are using it directly
+# Removed Crawler logic
 
 if __name__ == "__main__":
     setup_resources()
