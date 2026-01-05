@@ -172,7 +172,46 @@ def process_channel(source_base, target_base, channel_folder, date_folder, thres
     print(f"[FINISHED] {channel_folder}/{date_folder} - Kept {count}/{len(files)}")
     return f"{channel_folder}/{date_folder}: Processed {len(files)} imgs, Kept {count}."
 
+def check_hardware():
+    print("="*40)
+    print("Checking System Hardware")
+    print("="*40)
+    
+    # 1. CPU Check
+    cpu_cores = multiprocessing.cpu_count()
+    print(f"  [CPU] Detected Cores: {cpu_cores}")
+    
+    # 2. GPU Check (Try Torch first, then generic message)
+    gpu_found = False
+    try:
+        import torch
+        if torch.cuda.is_available():
+            gpu_name = torch.cuda.get_device_name(0)
+            print(f"  [GPU] Detected: {gpu_name}")
+            gpu_found = True
+        else:
+            print("  [GPU] Torch available but CUDA not active.")
+    except ImportError:
+        # Check via nvidia-smi command line as fallback
+        if shutil.which("nvidia-smi"):
+             print("  [GPU] Nvidia Driver detected (via nvidia-smi).")
+             gpu_found = True
+        else:
+             print("  [GPU] No GPU library found (torch).")
+
+    print("-" * 40)
+    print("Optimization Strategy:")
+    print(f"  - Algorithm: dHash (Bitwise Operation) -> CPU Optimized")
+    if gpu_found:
+        print(f"  - Note: GPU is powerful but dHash is I/O bound.")
+        print(f"          Transferring images to GPU would be slower than using {cpu_cores} CPU cores.")
+    print(f"  - Execution: Using {cpu_cores} Parallel Threads.")
+    print("="*40)
+    print("")
+
 def main():
+    check_hardware()
+
     config = load_config()
     factory = "MDC"
     if config:
