@@ -115,7 +115,9 @@ def process_channel(source_base, target_base, channel_folder, date_folder, thres
 
     # Helper to calculate hash for a given image path
     def get_hash(img_path):
-        img = cv2.imread(img_path)
+        # Use IMREAD_REDUCED_COLOR_2 for faster decoding (1/2 size)
+        # This speeds up IO and processing significantly
+        img = cv2.imread(img_path, cv2.IMREAD_REDUCED_COLOR_2)
         if img is None: return None, True # None logic, IsCorrupt=True to skip
         
         # Check corruption
