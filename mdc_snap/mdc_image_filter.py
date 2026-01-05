@@ -6,6 +6,8 @@ from skimage.metrics import structural_similarity as ssim
 from datetime import datetime
 import configparser
 from tqdm import tqdm
+import concurrent.futures
+import multiprocessing
 
 def load_config(config_path="config.txt"):
     if not os.path.exists(config_path):
@@ -41,21 +43,23 @@ def compare_images(img_path1, img_path2):
     score, _ = ssim(img1_gray, img2_gray, full=True, win_size=3)
     return score
 
+def process_channel_task(args):
+    """Wrapper function to unpack arguments for parallel processing."""
+    return process_channel(*args)
+
 def process_channel(source_base, target_base, channel_folder, date_folder, threshold=0.80):
     """Process images in a specific channel and date folder."""
     source_dir = os.path.join(source_base, channel_folder, date_folder)
     target_dir = os.path.join(target_base, channel_folder, date_folder)
     
     if not os.path.exists(source_dir):
-        return
+        return f"{channel_folder}/{date_folder}: Skipped (Source not found)"
     
     # List all jpg files and sort them by name (which includes timestamp)
     files = sorted([f for f in os.listdir(source_dir) if f.lower().endswith(('.jpg', '.jpeg'))])
     
     if not files:
-        return
-    
-    print(f"Processing {channel_folder}/{date_folder}: {len(files)} images found.")
+        return f"{channel_folder}/{date_folder}: Skipped (No images)"
     
     # Create target directory if it doesn't exist (only if we have files to process)
     os.makedirs(target_dir, exist_ok=True)
@@ -66,8 +70,10 @@ def process_channel(source_base, target_base, channel_folder, date_folder, thres
     last_kept_img_path = os.path.join(source_dir, first_img)
     count = 1
     
-    # Use tqdm for progress bar
-    for i in tqdm(range(1, len(files)), desc=f"Filtering {channel_folder}", unit="img"):
+    # We remove internal tqdm for parallel execution to avoid messed up output
+    # But we can print a start message? No, that messes up tqdm too.
+    
+    for i in range(1, len(files)):
         current_img_path = os.path.join(source_dir, files[i])
         
         score = compare_images(last_kept_img_path, current_img_path)
@@ -78,7 +84,7 @@ def process_channel(source_base, target_base, channel_folder, date_folder, thres
             last_kept_img_path = current_img_path
             count += 1
             
-    print(f"  -> Kept {count} unique images out of {len(files)}.")
+    return f"{channel_folder}/{date_folder}: Processed {len(files)} imgs, Kept {count}."
 
 def main():
     config = load_config()
@@ -103,15 +109,50 @@ def main():
         else:
              return
 
-    # Iterate through channels
-    for ch_name in sorted(os.listdir(source_base)):
+    # Collect all tasks
+    tasks = []
+    print("Scanning directories...")
+    try:
+        categories = sorted(os.listdir(source_base))
+    except Exception as e:
+        print(f"Error accessing source base: {e}")
+        return
+
+    for ch_name in categories:
         ch_path = os.path.join(source_base, ch_name)
         if os.path.isdir(ch_path) and ch_name.startswith("ch"):
-            # Iterate through date folders
-            for date_folder in sorted(os.listdir(ch_path)):
-                date_path = os.path.join(ch_path, date_folder)
-                if os.path.isdir(date_path):
-                    process_channel(source_base, target_base, ch_name, date_folder)
+            try:
+                date_folders = sorted(os.listdir(ch_path))
+                for date_folder in date_folders:
+                    date_path = os.path.join(ch_path, date_folder)
+                    if os.path.isdir(date_path):
+                        tasks.append((source_base, target_base, ch_name, date_folder))
+            except Exception as e:
+                print(f"Error reading channel {ch_name}: {e}")
+
+    if not tasks:
+        print("No image folders found to process.")
+        return
+
+    max_workers = multiprocessing.cpu_count()
+    print(f"Found {len(tasks)} folders. Starting parallel processing with {max_workers} cores...")
+
+    # Process in parallel
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all tasks
+        futures = [executor.submit(process_channel_task, task) for task in tasks]
+        
+        # Track progress
+        for future in tqdm(concurrent.futures.as_completed(futures), total=len(tasks), unit="folder"):
+            try:
+                result = future.result()
+                # Optional: print result if needed, but might clutter tqdm
+                # tqdm.write(result) 
+            except Exception as e:
+                tqdm.write(f"Task generated an exception: {e}")
+
+    print("\nAll tasks completed.")
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support() # For Windows executable support if generated later
     main()
