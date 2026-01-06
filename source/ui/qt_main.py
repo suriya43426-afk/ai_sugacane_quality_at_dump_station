@@ -51,8 +51,7 @@ class QtMainWindow(QMainWindow):
         self.main_layout.addWidget(self.content_stack)
         
         # Page 0: Overview
-        # We pass self.sidebar_container so Overview can swallow it
-        self.overview_view = OverviewView(self.system, sidebar=self.sidebar_container)
+        self.overview_view = OverviewView(self.system)
         self.overview_view.station_clicked.connect(self._on_view_selected)
         self.overview_view.order_changed.connect(self.sidebar.update_button_order)
         
@@ -80,17 +79,15 @@ class QtMainWindow(QMainWindow):
 
     def _on_view_selected(self, view_id):
         if view_id == "overview":
-            # Re-insert into Overview Grid
-            self.overview_view.integrate_sidebar(self.sidebar_container)
             self.content_stack.setCurrentIndex(0)
         else:
-            # Move Sidebar back to Global Left for Single View
-            self.main_layout.insertWidget(0, self.sidebar_container)
-            self.sidebar_container.show()
-            
             # Update Single View
             self.single_view.set_station(view_id)
             self.content_stack.setCurrentIndex(1)
+        
+        # Ensure sidebar is correctly toggled if needed, 
+        # but in this case, we keep it visible.
+        self.sidebar_container.show()
 
     def _setup_theme(self):
         pass
