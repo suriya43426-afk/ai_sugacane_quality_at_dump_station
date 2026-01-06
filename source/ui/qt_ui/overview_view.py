@@ -44,20 +44,19 @@ class OverviewView(QWidget):
         
         self.cards = {}
         
-        # Grid Layout: 3 Columns
+        # Grid Layout: 2 Columns
         for i, d_id in enumerate(self.dump_order):
             card = StationCard(d_id)
             card.clicked.connect(self.station_clicked.emit)
             self.cards[d_id] = card
             
-            row = i // 3
-            col = i % 3
+            row = i // 2
+            col = i % 2
             self.grid_layout.addWidget(card, row, col)
             
         # Standard stretches
         self.grid_layout.setColumnStretch(0, 1)
         self.grid_layout.setColumnStretch(1, 1)
-        self.grid_layout.setColumnStretch(2, 1)
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasText():
