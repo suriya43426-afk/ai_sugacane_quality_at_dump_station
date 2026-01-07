@@ -163,7 +163,7 @@ def process_batch(factory, milling_process, source_root):
             # S3 Path: {factory}/{milling_process}/{dump_no}/{date}/{filename}
             for ch_name, local_path, filename in files_to_upload:
                 dump_no = ch_name.replace('ch', '')
-                s3_key = f"{factory}/{milling_process}/{dump_no}/{date_folder}/{filename}"
+                s3_key = f"images/{factory}/raw_images/{dump_no}/{date_folder}/{filename}"
                 
                 try:
                     s3.upload_file(local_path, S3_BUCKET, s3_key)

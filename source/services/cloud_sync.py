@@ -154,7 +154,7 @@ class CloudSyncWorker(QObject):
                 for ch_name, local_path, filename in files_to_upload:
                     if not self._is_running: break
                     dump_no = ch_name.replace('ch', '')
-                    s3_key = f"{factory}/{milling_process}/{dump_no}/{date_folder}/{filename}"
+                    s3_key = f"images/{factory}/raw_images/{dump_no}/{date_folder}/{filename}"
                     
                     try:
                         s3.upload_file(local_path, "mitrphol-ai-sugarcane-data-lake", s3_key)
