@@ -1,8 +1,8 @@
 import os
 import sys
 
-# Reduce RTSP timeout to 3 seconds for faster fallback
-os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|fflags;nobuffer|flags;low_delay|strict;experimental"
+# Prioritize TCP for reliability. Remove 'nobuffer' to fix gray artifacts.
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|timeout;5000"
 
 # Add project root to path for absolute imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

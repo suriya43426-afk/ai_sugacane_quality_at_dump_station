@@ -256,6 +256,29 @@ class DumpProcessor(threading.Thread):
 
     def _save_snap_image(self, frame, view_type, ch_name):
         try:
+            # 1. Corruption Check (Simple Gray/Green Check)
+            # Gray screen usually means std dev is very low or mean is exactly 127/128 everywhere, 
+            # or it's just empty.
+            if frame is None or frame.size == 0: return
+
+            # Basic Check: If image is mostly one color (Gray artifact)
+            # A completely gray image (decoding error) has low variance.
+            # Using the same logic as cloud_sync for consistency would be best, 
+            # but let's implement a quick variance check or the same color check.
+            
+            # Let's import numpy locally to avoid scope issues if not imported
+            import numpy as np
+            
+            # Check 1: Low Standard Deviation (Flat color)
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            std_dev = cv2.meanStdDev(gray)[1][0][0]
+            if std_dev < 5: # Very flat image (gray screen)
+                self.log.warning(f"Skipping corrupted snap (Low StdDev): {ch_name}")
+                return
+
+            # Check 2: Specific Color Artifacts (Green/Pink) - simplified from cloud_sync
+            # (Optional: can add if needed, but StdDev is good for gray screens)
+
             # Path: ./images/{factory}/raw_images/{view_type}/{ch_name}/{Date}/filename
             factory_info = self.db.get_factory_info()
             factory = factory_info.get('factory_id', 'MDC')
