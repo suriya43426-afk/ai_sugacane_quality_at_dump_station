@@ -281,11 +281,20 @@ class DumpProcessor(threading.Thread):
             # Check 2: Specific Color Artifacts (Green/Pink) - simplified from cloud_sync
             # (Optional: can add if needed, but StdDev is good for gray screens)
 
-            # Format Channel Name: CH201 -> ch2, CH101 -> ch1
-            # Assuming format CH{Num}01
-            formatted_ch = ch_name.lower()
-            if "ch" in formatted_ch and "01" in formatted_ch:
-                formatted_ch = formatted_ch.replace("01", "")
+            # Calculate Real Channel Number based on Dump ID
+            # Dump 1 -> ch1 (LPR), ch2 (Top)
+            # Dump 2 -> ch3 (LPR), ch4 (Top)
+            try:
+                dump_num = int(self.dump_id.replace("dump-", ""))
+            except:
+                dump_num = 1
+                
+            if view_type == "LPR":
+                real_ch_num = (dump_num * 2) - 1
+            else:
+                real_ch_num = dump_num * 2
+                
+            formatted_ch = f"ch{real_ch_num}"
             
             # Path: ./images/{factory}/raw_images/{view_type}/{formatted_ch}/{Date}/filename
             factory_info = self.db.get_factory_info()
