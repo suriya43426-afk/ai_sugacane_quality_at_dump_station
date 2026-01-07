@@ -20,7 +20,7 @@ if not exist "venv" (
 :: Activate and Install
 echo [INFO] Installing requirements...
 call venv\Scripts\activate.bat
-pip install --upgrade pip
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 
 :: Check Models
