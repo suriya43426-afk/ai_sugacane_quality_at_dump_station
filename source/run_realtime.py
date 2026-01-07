@@ -1,8 +1,8 @@
 import os
 import sys
 
-# Prioritize TCP for reliability. Remove 'nobuffer' to fix gray artifacts.
-os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|timeout;5000"
+# Max Quality: TCP, Large Buffer, High Latency Allowed (5s)
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|max_delay;5000000"
 
 # Add project root to path for absolute imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

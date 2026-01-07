@@ -95,6 +95,8 @@ class DumpProcessor(threading.Thread):
                             # For now, we rely on standard open but log clearly.
                             cap = cv2.VideoCapture(url)
                             if cap.isOpened():
+                                # BUFFER OPTIMIZATION: larger buffer = smoother image, more delay
+                                cap.set(cv2.CAP_PROP_BUFFERSIZE, 10) 
                                 self.caps[ch] = cap
                                 connected = True
                                 self.log.info(f"Connected to RTSP {ch}")
