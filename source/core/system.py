@@ -13,7 +13,21 @@ class SugarcaneSystem:
         
         # Load Config
         self.config = configparser.ConfigParser()
-        self.config.read("config.txt", encoding="utf-8")
+        
+        # --- DEBUG CONFIG LOADING ---
+        cwd = os.getcwd()
+        self.log.info(f"DEBUG: Current CWD: {cwd}")
+        if os.path.exists("config.txt"):
+            self.log.info("DEBUG: Found config.txt in CWD.")
+        else:
+            self.log.warning("DEBUG: config.txt NOT FOUND in CWD!")
+            
+        read_files = self.config.read("config.txt", encoding="utf-8")
+        self.log.info(f"DEBUG: ConfigParser read: {read_files}")
+        
+        t_val = self.config.get("DEFAULT", "testing", fallback="NOT_SET")
+        self.log.info(f"DEBUG: RAW 'testing' value: {t_val}")
+        # ----------------------------
         
         self.factory = self.config.get("DEFAULT", "factory", fallback="MDC")
         self.total_dumps = self.config.getint("DEFAULT", "total_dumps", fallback=8)
