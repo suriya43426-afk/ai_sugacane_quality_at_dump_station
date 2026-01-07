@@ -281,16 +281,22 @@ class DumpProcessor(threading.Thread):
             # Check 2: Specific Color Artifacts (Green/Pink) - simplified from cloud_sync
             # (Optional: can add if needed, but StdDev is good for gray screens)
 
-            # Path: ./images/{factory}/raw_images/{view_type}/{ch_name}/{Date}/filename
+            # Format Channel Name: CH201 -> ch2, CH101 -> ch1
+            # Assuming format CH{Num}01
+            formatted_ch = ch_name.lower()
+            if "ch" in formatted_ch and "01" in formatted_ch:
+                formatted_ch = formatted_ch.replace("01", "")
+            
+            # Path: ./images/{factory}/raw_images/{view_type}/{formatted_ch}/{Date}/filename
             factory_info = self.db.get_factory_info()
             factory = factory_info.get('factory_id', 'MDC')
             
             date_folder = datetime.now().strftime("%Y%m%d")
-            base_dir = os.path.join("images", factory, "raw_images", view_type, ch_name, date_folder)
+            base_dir = os.path.join("images", factory, "raw_images", view_type, formatted_ch, date_folder)
             os.makedirs(base_dir, exist_ok=True)
             
             ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"{factory}_{ch_name}_{ts_str}.jpg"
+            filename = f"{factory}_{formatted_ch}_{ts_str}.jpg"
             save_path = os.path.join(base_dir, filename)
             
             # Save Raw Image
