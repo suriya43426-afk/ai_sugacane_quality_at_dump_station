@@ -171,53 +171,32 @@ class DumpProcessor(threading.Thread):
         normalized_frames = {'LPR': f_frame, 'AI': t_frame}
 
         # 1. AI Analysis & Visualization
-        # Odd Channels (1,3,5...) -> LPR [classification.pt]
-        # Even Channels (2,4,6...) -> AI [objectdetection.pt]
+        # Front Camera (CH101) -> LPR [classification.pt]
+        # Top Camera (CH201) -> AI Classification [objectdetection.pt]
         
-        # Parse Dump ID Number (e.g., MDC-A-01 -> 1)
-        try:
-            dump_num = int(self.dump_id.split('-')[-1])
-        except:
-            dump_num = 1 # Fallback
-            
-        is_odd = (dump_num % 2 != 0)
-        
-        if is_odd:
-            # --- CHANNEL ODD: LPR ---
-            lpr_res = self.lpr_engine.detect(f_frame, skip_ocr=False) # Enable OCR to show text
-            
-            # Draw LPR BBox
-            if lpr_res:
-                x1, y1, x2, y2 = lpr_res.bbox
-                cv2.rectangle(f_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                if lpr_res.text:
-                    cv2.putText(f_frame, lpr_res.text, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-            
-            # Update Annotated Frame
-            normalized_frames['LPR'] = f_frame
-            
-            # Skip AI Engine
-            cls_res = {} 
-            
+        # --- LPR Detection (Front Frame) ---
+        lpr_res = self.lpr_engine.detect(f_frame, skip_ocr=False)
+        if lpr_res:
+            x1, y1, x2, y2 = lpr_res.bbox
+            cv2.rectangle(f_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            if lpr_res.text:
+                cv2.putText(f_frame, lpr_res.text, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+            self.plate_number = lpr_res.text if lpr_res.text else "UNKNOWN"
         else:
-            # --- CHANNEL EVEN: AI Classification ---
-            lpr_res = None
-            cls_res = self.cls_engine.analyze(t_frame)
-            
-            # Draw AI BBox (Trash/Cane)
-            detections = cls_res.get('detections', [])
-            for (x1, y1, x2, y2) in detections:
-                cv2.rectangle(t_frame, (x1, y1), (x2, y2), (0, 165, 255), 2) # Orange
-                
-            # Update Annotated Frame
-            normalized_frames['AI'] = t_frame
+            self.plate_number = "-"
+
+        # --- AI Classification (Top Frame) ---
+        cls_res = self.cls_engine.analyze(t_frame)
+        self.latest_cls_res = cls_res
+        
+        # Draw AI BBox (Trash/Cane)
+        detections = cls_res.get('detections', [])
+        for (x1, y1, x2, y2) in detections:
+            cv2.rectangle(t_frame, (x1, y1), (x2, y2), (0, 165, 255), 2) # Orange
             
         # Update Results for UI Fetching
-        self.latest_cls_res = cls_res
-        if lpr_res and lpr_res.text:
-            self.plate_number = lpr_res.text
-
-        # Update Latest Frames with ANNOTATED versions
+        normalized_frames['LPR'] = f_frame
+        normalized_frames['AI'] = t_frame
         self.latest_frames = normalized_frames
         
         # 2. Update FSM

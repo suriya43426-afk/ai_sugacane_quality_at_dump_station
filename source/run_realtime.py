@@ -2,7 +2,7 @@ import os
 import sys
 
 # Reduce RTSP timeout to 3 seconds for faster fallback
-os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;udp|timeout;3000"
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|timeout;3000"
 
 # Add project root to path for absolute imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

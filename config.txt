@@ -2,7 +2,7 @@
 factory = MDC
 milling_process = A
 total_dumps = 8
-testing = 1
+testing = 0
 
 [DATABASE]
 path = sugarcane_v2.db
