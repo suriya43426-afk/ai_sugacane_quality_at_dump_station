@@ -41,6 +41,7 @@ class QtMainWindow(QMainWindow):
         
         self.sidebar = Sidebar(self)
         self.sidebar.view_selected.connect(self._on_view_selected)
+        self.sidebar.ai_toggled.connect(self.system.set_ai_enabled)
         self.sidebar_layout.addWidget(self.sidebar)
         
         # Initial placement: Let the root layout have it first

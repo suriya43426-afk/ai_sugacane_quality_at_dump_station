@@ -33,6 +33,8 @@ class DumpProcessor(threading.Thread):
         self.session_uuid = None
         self.latest_frames = {} 
         self.latest_cls_res = {} # Store real AI results
+        self.ai_enabled = True # Default
+        self.last_snap_time = 0
 
     def run(self):
         self.log.info(f"Starting processor for {self.dump_id}")
@@ -169,6 +171,19 @@ class DumpProcessor(threading.Thread):
 
         # Initialize normalized container for UI updates
         normalized_frames = {'LPR': f_frame, 'AI': t_frame}
+        self.latest_frames = normalized_frames
+
+        # --- AI TOGGLE LOGIC ---
+        if not self.ai_enabled:
+            # Fallback Snap Logic (10s interval)
+            now = time.time()
+            if now - self.last_snap_time > 10:
+                self.last_snap_time = now
+                self.log.info("AI OFF: Executing Fallback Snap...")
+                self._save_snap_image(f_frame, "LPR", f_key)
+                self._save_snap_image(t_frame, "TopView", t_key)
+            return
+        # -----------------------
 
         # 1. AI Analysis & Visualization
         # Front Camera (CH101) -> LPR [classification.pt]
@@ -194,7 +209,7 @@ class DumpProcessor(threading.Thread):
         for (x1, y1, x2, y2) in detections:
             cv2.rectangle(t_frame, (x1, y1), (x2, y2), (0, 165, 255), 2) # Orange
             
-        # Update Results for UI Fetching
+        # Update Results for UI consumption (Annotated)
         normalized_frames['LPR'] = f_frame
         normalized_frames['AI'] = t_frame
         self.latest_frames = normalized_frames
@@ -238,6 +253,25 @@ class DumpProcessor(threading.Thread):
         trigger = self.sm.get_capture_trigger()
         if trigger and self.session_uuid:
             self._perform_capture(trigger, f_frame, t_frame)
+
+    def _save_snap_image(self, frame, view_type, ch_name):
+        try:
+            # Path: ./images/{factory}/raw_images/{view_type}/{ch_name}/{Date}/filename
+            factory_info = self.db.get_factory_info()
+            factory = factory_info.get('factory_id', 'MDC')
+            
+            date_folder = datetime.now().strftime("%Y%m%d")
+            base_dir = os.path.join("images", factory, "raw_images", view_type, ch_name, date_folder)
+            os.makedirs(base_dir, exist_ok=True)
+            
+            ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{factory}_{ch_name}_{ts_str}.jpg"
+            save_path = os.path.join(base_dir, filename)
+            
+            # Save Raw Image
+            cv2.imwrite(save_path, frame)
+        except Exception as e:
+            self.log.error(f"Failed to save snap: {e}")
 
     def _perform_capture(self, trigger, f_frame, t_frame):
         self.log.info(f"Capturing {trigger} for session {self.session_uuid}")

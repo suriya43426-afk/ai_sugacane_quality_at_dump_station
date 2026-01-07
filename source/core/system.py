@@ -85,6 +85,11 @@ class SugarcaneSystem:
         for p in self.processors:
             p.running = False
 
+    def set_ai_enabled(self, enabled: bool):
+        self.log.info(f"System AI Enabled: {enabled}")
+        for p in self.processors:
+            p.ai_enabled = enabled
+
     def get_processor_states(self):
         """Returns a list of state dictionaries for the UI with real AI data."""
         states = []

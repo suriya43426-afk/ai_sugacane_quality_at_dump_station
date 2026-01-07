@@ -6,6 +6,7 @@ import os
 class Sidebar(QWidget):
     # Signals: 'overview' or 'dump_id'
     view_selected = Signal(str)
+    ai_toggled = Signal(bool)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -168,7 +169,35 @@ class Sidebar(QWidget):
         btn_diag.clicked.connect(lambda: self.view_selected.emit("diagnostics"))
         ctrl_layout.addWidget(btn_diag)
         
+        # System Controls
+        sys_lbl = QLabel("SYSTEM CONTROLS")
+        sys_lbl.setStyleSheet("color: #94A3B8; font-size: 12px; font-weight: 700; letter-spacing: 1px; margin-top: 20px;")
+        ctrl_layout.addWidget(sys_lbl)
+        
+        btn_ai = QPushButton("AI SYSTEM: ON")
+        btn_ai.setCheckable(True)
+        btn_ai.setChecked(True)
+        btn_ai.setCursor(Qt.PointingHandCursor)
+        btn_ai.setStyleSheet("""
+            QPushButton {
+                background-color: #EF4444; color: white; border-radius: 8px; padding: 10px; font-weight: 700;
+            }
+            QPushButton:checked {
+                background-color: #10B981; color: white;
+            }
+        """)
+        btn_ai.clicked.connect(self._on_ai_toggle)
+        self.btn_ai = btn_ai
+        ctrl_layout.addWidget(btn_ai)
+        
         self.layout.addWidget(ctrl_widget)
+
+    def _on_ai_toggle(self, checked):
+        if checked:
+            self.btn_ai.setText("AI SYSTEM: ON")
+        else:
+            self.btn_ai.setText("AI SYSTEM: OFF")
+        self.ai_toggled.emit(checked)
 
     def set_active_page(self, page_id):
         if page_id == "overview": self.btn_grid.setChecked(True)

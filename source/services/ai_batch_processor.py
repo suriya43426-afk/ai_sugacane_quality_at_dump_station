@@ -85,123 +85,81 @@ def parse_timestamp(filename):
 def process_batch(factory, milling_process, source_root):
     logging.info(f"Starting Batch Process for {factory}...")
     
-    # Identify Pairs: (1,2), (3,4) ... (15,16)
-    # Assuming folder names are "ch1", "ch2", etc.
-    pairs = []
-    for i in range(1, 16, 2):
-        pairs.append((f"ch{i}", f"ch{i+1}"))
+    try:
+        s3 = get_s3_client()
+    except Exception as e:
+        logging.error(f"AWS Failed: {e}")
+        return
+
+    # 1. Scan ViewTypes (LPR, TopView)
+    if not os.path.exists(source_root): return
     
-    s3 = get_s3_client()
+    view_types = [d for d in os.listdir(source_root) if os.path.isdir(os.path.join(source_root, d))]
     
     total_uploaded = 0
     total_deleted = 0
-
-    for ch_a, ch_b in pairs:
-        path_a = os.path.join(source_root, ch_a)
-        path_b = os.path.join(source_root, ch_b)
+    
+    for view_type in view_types:
+        view_path = os.path.join(source_root, view_type)
         
-        # Skip if folders don't exist
-        if not os.path.exists(path_a) or not os.path.exists(path_b):
-            logging.warning(f"Missing folders for pair {ch_a}-{ch_b}. Skipping.")
-            continue
-            
-        # Get all Date folders in these channels
-        dates_a = set(os.listdir(path_a))
-        dates_b = set(os.listdir(path_b))
-        common_dates = dates_a.intersection(dates_b)
+        # 2. Scan Channels (ch101, ch201...)
+        channels = [d for d in os.listdir(view_path) if os.path.isdir(os.path.join(view_path, d))]
         
-        for date_folder in sorted(common_dates):
-            dir_a = os.path.join(path_a, date_folder)
-            dir_b = os.path.join(path_b, date_folder)
+        for ch in channels:
+            ch_path = os.path.join(view_path, ch)
             
-            # List files
-            files_a = {parse_timestamp(f): f for f in os.listdir(dir_a) if f.endswith('.jpg')}
-            files_b = {parse_timestamp(f): f for f in os.listdir(dir_b) if f.endswith('.jpg')}
+            # 3. Scan Date Folders
+            dates = [d for d in os.listdir(ch_path) if os.path.isdir(os.path.join(ch_path, d))]
             
-            # Find Intersection of Timestamps
-            common_timestamps = set(files_a.keys()).intersection(set(files_b.keys())) - {None}
-            
-            logging.info(f"[{ch_a}-{ch_b}] Date {date_folder}: Found {len(common_timestamps)} matching pairs.")
-            
-            # Process Matches
-            files_to_upload = []
-            files_to_delete = [] # Mismatched or Corrupted
-            
-            # Add orphans to delete list
-            for ts in files_a.keys() - common_timestamps:
-                if ts: files_to_delete.append(os.path.join(dir_a, files_a[ts]))
-            for ts in files_b.keys() - common_timestamps:
-                if ts: files_to_delete.append(os.path.join(dir_b, files_b[ts]))
+            for date_folder in dates:
+                date_path = os.path.join(ch_path, date_folder)
+                files = [f for f in os.listdir(date_path) if f.endswith('.jpg')]
                 
-            for ts in common_timestamps:
-                file_a = files_a[ts]
-                file_b = files_b[ts]
-                full_path_a = os.path.join(dir_a, file_a)
-                full_path_b = os.path.join(dir_b, file_b)
-                
-                # Check Image Quality (Filter)
-                img_a = cv2.imread(full_path_a, cv2.IMREAD_REDUCED_COLOR_2)
-                img_b = cv2.imread(full_path_b, cv2.IMREAD_REDUCED_COLOR_2)
-                
-                if is_corrupted(img_a) or is_corrupted(img_b):
-                    # If EITHER is bad, discard BOTH (Strict Sync)
-                    files_to_delete.append(full_path_a)
-                    files_to_delete.append(full_path_b)
-                else:
-                    files_to_upload.append((ch_a, full_path_a, file_a))
-                    files_to_upload.append((ch_b, full_path_b, file_b))
-            
-            # Execute Deletion (Cleanup Bad/Unpaired)
-            for f_path in files_to_delete:
-                try:
-                    os.remove(f_path)
-                    total_deleted += 1
-                except OSError as e:
-                    logging.error(f"Failed to delete {f_path}: {e}")
-
-            # Execute Upload (Batch)
-            # S3 Path: {factory}/{milling_process}/{dump_no}/{date}/{filename}
-            for ch_name, local_path, filename in files_to_upload:
-                dump_no = ch_name.replace('ch', '')
-                s3_key = f"images/{factory}/raw_images/{dump_no}/{date_folder}/{filename}"
-                
-                try:
-                    s3.upload_file(local_path, S3_BUCKET, s3_key)
-                    # Upload Metadata Log (Optional but recommended)
-                    # For now just image
+                for filename in files:
+                    local_path = os.path.join(date_path, filename)
                     
-                    # After upload, remove local? Prompt implies "Centralized... send to S3".
-                    # Usually "Centralized" means move to cloud. Let's delete after verify upload.
-                    os.remove(local_path) 
-                    total_uploaded += 1
-                except Exception as e:
-                    logging.error(f"Failed upload {filename}: {e}")
+                    # S3 Key: images/{factory}/raw_images/{view_type}/{ch}/{date}/{filename}
+                    s3_key = f"images/{factory}/raw_images/{view_type}/{ch}/{date_folder}/{filename}"
+                    
+                    try:
+                        # Quality Check
+                        img = cv2.imread(local_path, cv2.IMREAD_REDUCED_COLOR_2)
+                        if is_corrupted(img):
+                            os.remove(local_path)
+                            total_deleted += 1
+                            continue
+                            
+                        # Upload
+                        s3.upload_file(local_path, S3_BUCKET, s3_key)
+                        os.remove(local_path)
+                        total_uploaded += 1
+                        
+                    except Exception as e:
+                        logging.error(f"Upload/Check Failed {filename}: {e}")
 
     logging.info(f"Batch Complete. Uploaded: {total_uploaded}, Cleaned/Deleted: {total_deleted}")
 
 def main():
     config = load_config()
     factory = config['DEFAULT'].get('factory', 'MDC')
-    milling_process = config['DEFAULT'].get('milling_process', 'A')
     
     # Locate Source Directory Dynamically
     root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    source_root = os.path.join(root, "ai_snap", "image", f"snap_image_{factory}")
+    source_root = os.path.join(root, "images", factory, "raw_images")
+
     if not os.path.exists(source_root):
-        source_root = os.path.join(root, "image", f"snap_image_{factory}")
-    
-    if not os.path.exists(source_root):
-        logging.error(f"Source directory not found: {source_root}")
-        # Try to create it if it doesn't exist? (Optional)
-        return
+        # Fallback Check
+        fallback = os.path.join(root, "ai_snap", "image", f"snap_image_{factory}")
+        if os.path.exists(fallback):
+             source_root = fallback
 
     logging.info(f"Service Started. Monitoring {source_root}")
-    logging.info(f"Sync Pairs: (1=2, 3=4...). Batch Interval: {BATCH_INTERVAL_SECONDS}s")
+    logging.info(f"Sync Logic: Recursive Path Scan. Batch Interval: {BATCH_INTERVAL_SECONDS}s")
 
     while True:
         try:
             start_time = time.time()
-            process_batch(factory, milling_process, source_root)
+            process_batch(factory, None, source_root)
             
             elapsed = time.time() - start_time
             sleep_time = max(0, BATCH_INTERVAL_SECONDS - elapsed)

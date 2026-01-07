@@ -31,9 +31,15 @@ class CloudSyncWorker(QObject):
         
         # Determine Source Path
         root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        self.source_root = os.path.join(root, "ai_snap", "image", f"snap_image_{self.factory}")
+        # New Requirement: ./images/{factory}/raw_images
+        self.source_root = os.path.join(root, "images", self.factory, "raw_images")
+        
+        # Fallback support for old path (optional, but good to keep for safety)
         if not os.path.exists(self.source_root):
-             self.source_root = os.path.join(root, "image", f"snap_image_{self.factory}")
+             # Try old location just in case user reverts
+             self.source_root_legacy = os.path.join(root, "ai_snap", "image", f"snap_image_{self.factory}")
+        else:
+             self.source_root_legacy = None
         
         self.batch_interval = 3600 # 1 Hour
 
@@ -44,9 +50,12 @@ class CloudSyncWorker(QObject):
         while self._is_running:
             try:
                 if not os.path.exists(self.source_root):
-                    self.status_updated.emit("Waiting for Source Directory...")
-                    time.sleep(10)
-                    continue
+                    if self.source_root_legacy and os.path.exists(self.source_root_legacy):
+                        self.source_root = self.source_root_legacy
+                    else:
+                        self.status_updated.emit("Waiting for Source Directory...")
+                        time.sleep(10)
+                        continue
 
                 self.status_updated.emit("Starting Batch Sync...")
                 start_time = time.time()
@@ -73,14 +82,12 @@ class CloudSyncWorker(QObject):
         self._is_running = False
 
     def _process_batch(self):
-        # ... (Logic from ai_batch_processor.py but using self vars) ...
+        """
+        New Structure: images/{factory}/raw_images/{ViewType}/ch{N}/{Date}/filename
+        Recursively scan and upload.
+        """
         factory = self.factory
-        milling_process = self.milling_process
         source_root = self.source_root
-        
-        pairs = []
-        for i in range(1, 16, 2):
-            pairs.append((f"ch{i}", f"ch{i+1}"))
         
         try:
             s3 = get_s3_client()
@@ -90,80 +97,52 @@ class CloudSyncWorker(QObject):
 
         total_uploaded = 0
         total_deleted = 0
-
-        for ch_a, ch_b in pairs:
-            if not self._is_running: break
+        
+        # 1. Scan ViewTypes (LPR, TopView)
+        if not os.path.exists(source_root): return
+        
+        view_types = [d for d in os.listdir(source_root) if os.path.isdir(os.path.join(source_root, d))]
+        
+        for view_type in view_types:
+            view_path = os.path.join(source_root, view_type)
             
-            path_a = os.path.join(source_root, ch_a)
-            path_b = os.path.join(source_root, ch_b)
+            # 2. Scan Channels (ch101, ch201...)
+            channels = [d for d in os.listdir(view_path) if os.path.isdir(os.path.join(view_path, d))]
             
-            if not os.path.exists(path_a) or not os.path.exists(path_b):
-                continue
+            for ch in channels:
+                ch_path = os.path.join(view_path, ch)
                 
-            dates_a = set(os.listdir(path_a))
-            dates_b = set(os.listdir(path_b))
-            common_dates = dates_a.intersection(dates_b)
-            
-            for date_folder in sorted(common_dates):
-                if not self._is_running: break
+                # 3. Scan Date Folders
+                dates = [d for d in os.listdir(ch_path) if os.path.isdir(os.path.join(ch_path, d))]
                 
-                dir_a = os.path.join(path_a, date_folder)
-                dir_b = os.path.join(path_b, date_folder)
-                
-                files_a = {parse_timestamp(f): f for f in os.listdir(dir_a) if f.endswith('.jpg')}
-                files_b = {parse_timestamp(f): f for f in os.listdir(dir_b) if f.endswith('.jpg')}
-                
-                common_timestamps = set(files_a.keys()).intersection(set(files_b.keys())) - {None}
-                
-                files_to_upload = []
-                files_to_delete = []
-                
-                # Orphans
-                for ts in files_a.keys() - common_timestamps:
-                    if ts: files_to_delete.append(os.path.join(dir_a, files_a[ts]))
-                for ts in files_b.keys() - common_timestamps:
-                    if ts: files_to_delete.append(os.path.join(dir_b, files_b[ts]))
+                for date_folder in dates:
+                    if not self._is_running: return
                     
-                for ts in common_timestamps:
-                    file_a = files_a[ts]
-                    file_b = files_b[ts]
-                    full_path_a = os.path.join(dir_a, file_a)
-                    full_path_b = os.path.join(dir_b, file_b)
+                    date_path = os.path.join(ch_path, date_folder)
+                    files = [f for f in os.listdir(date_path) if f.endswith('.jpg')]
                     
-                    try:
-                        img_a = cv2.imread(full_path_a, cv2.IMREAD_REDUCED_COLOR_2)
-                        img_b = cv2.imread(full_path_b, cv2.IMREAD_REDUCED_COLOR_2)
+                    for filename in files:
+                        if not self._is_running: return
                         
-                        if is_corrupted(img_a) or is_corrupted(img_b):
-                            files_to_delete.append(full_path_a)
-                            files_to_delete.append(full_path_b)
-                        else:
-                            files_to_upload.append((ch_a, full_path_a, file_a))
-                            files_to_upload.append((ch_b, full_path_b, file_b))
-                    except Exception:
-                        pass # Skip file read errors
+                        local_path = os.path.join(date_path, filename)
+                        
+                        # S3 Key: images/{factory}/raw_images/{view_type}/{ch}/{date}/{filename}
+                        s3_key = f"images/{factory}/raw_images/{view_type}/{ch}/{date_folder}/{filename}"
+                        
+                        try:
+                            # Quality Check
+                            img = cv2.imread(local_path, cv2.IMREAD_REDUCED_COLOR_2)
+                            if is_corrupted(img):
+                                os.remove(local_path)
+                                total_deleted += 1
+                                continue
+                                
+                            # Upload
+                            s3.upload_file(local_path, "mitrphol-ai-sugarcane-data-lake", s3_key)
+                            os.remove(local_path)
+                            total_uploaded += 1
+                            
+                        except Exception as e:
+                            logging.error(f"Upload/Check Failed {filename}: {e}")
 
-                # Delete
-                for f_path in files_to_delete:
-                    try:
-                        os.remove(f_path)
-                        total_deleted += 1
-                    except: pass
-                
-                # Upload
-                for ch_name, local_path, filename in files_to_upload:
-                    if not self._is_running: break
-                    dump_no = ch_name.replace('ch', '')
-                    s3_key = f"images/{factory}/raw_images/{dump_no}/{date_folder}/{filename}"
-                    
-                    try:
-                        s3.upload_file(local_path, "mitrphol-ai-sugarcane-data-lake", s3_key)
-                        os.remove(local_path)
-                        total_uploaded += 1
-                        # Emit specific progress for UI Feedback
-                        # self.status_updated.emit(f"Uploaded: {filename}") 
-                    except Exception as e:
-                        logging.error(f"Upload Fail: {e}")
-
-        # Final Report for this Batch
         self.progress_updated.emit(total_uploaded, total_deleted)
