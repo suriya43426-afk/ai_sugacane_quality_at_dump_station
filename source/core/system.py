@@ -11,19 +11,28 @@ class SugarcaneSystem:
         # Setup Logging
         self.log = logging.getLogger("SugarcaneSystem")
         
-        # Load Config
+        # Load Config (Standardized Absolute Paths)
         self.config = configparser.ConfigParser()
-        
-        # --- DEBUG CONFIG LOADING ---
-        cwd = os.getcwd()
-        self.log.info(f"DEBUG: Current CWD: {cwd}")
-        if os.path.exists("config.txt"):
-            self.log.info("DEBUG: Found config.txt in CWD.")
-        else:
-            self.log.warning("DEBUG: config.txt NOT FOUND in CWD!")
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        p_config = os.path.join(base_dir, "config.txt")
+        p_secrets = os.path.join(base_dir, "secrets.ini")
+
+        self.log.info(f"Target Config: {p_config}")
+        if os.path.exists(p_config):
+            files_to_read = [p_config]
+            if os.path.exists(p_secrets):
+                self.log.info(f"Found secrets: {p_secrets}")
+                files_to_read.append(p_secrets)
+            elif os.path.exists(p_secrets + ".txt"):
+                p_secrets = p_secrets + ".txt"
+                self.log.info(f"Found secrets (fallback): {p_secrets}")
+                files_to_read.append(p_secrets)
+            else:
+                self.log.warning(f"Secrets NOT found at: {p_secrets}")
             
-        read_files = self.config.read(["config.txt", "secrets.ini"], encoding="utf-8")
-        self.log.info(f"DEBUG: ConfigParser read: {read_files}")
+            self.config.read(files_to_read, encoding="utf-8")
+        else:
+            self.log.error(f"Critical: config.txt not found at {p_config}")
         
         t_val = self.config.get("DEFAULT", "testing", fallback="NOT_SET")
         self.log.info(f"DEBUG: RAW 'testing' value: {t_val}")

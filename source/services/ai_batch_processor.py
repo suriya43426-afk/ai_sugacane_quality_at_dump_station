@@ -37,6 +37,13 @@ def load_config(config_path="config.txt", secrets_path="secrets.ini"):
     logging.debug(f"Target Config: {p_config}")
     logging.debug(f"Target Secrets: {p_secrets}")
 
+    if not os.path.exists(p_secrets):
+        logging.warning(f"Secrets NOT found at absolute path: {p_secrets}")
+        try:
+            logging.info(f"Files in {base_dir}: {os.listdir(base_dir)}")
+        except Exception as e:
+            logging.error(f"Cannot list dir {base_dir}: {e}")
+
     if os.path.exists(p_config):
         config = configparser.ConfigParser()
         files_to_read = [p_config]
