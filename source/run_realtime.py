@@ -2,7 +2,8 @@ import os
 import sys
 
 # Max Quality: TCP, Large Buffer, High Latency Allowed (5s)
-os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|max_delay;5000000"
+# Max Quality: TCP, Large Buffer, High Latency Allowed (5s) -> Optimized for Low Latency
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|fflags;nobuffer|flags;low_delay"
 
 # Add project root to path for absolute imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

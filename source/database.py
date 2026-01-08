@@ -254,8 +254,9 @@ class DatabaseManager:
                         
                         def build_url(idx):
                             if nvr_ip and nvr_user and nvr_pass:
-                                return f"rtsp://{nvr_user}:{nvr_pass}@{nvr_ip}:554/Streaming/Channels/{idx}01"
-                            return f"CH{idx}01" # Placeholder if no NVR info
+                                # Use Sub Stream (02) instead of Main Stream (01) to save Bandwidth
+                                return f"rtsp://{nvr_user}:{nvr_pass}@{nvr_ip}:554/Streaming/Channels/{idx}02"
+                            return f"CH{idx}02" # Placeholder if no NVR info
 
                         # Front Camera
                         c1_id = f"cam-{d_id}-front"
