@@ -242,7 +242,8 @@ class DatabaseManager:
                 
                 # Seed Dumps & Cameras if empty
                 cursor.execute("SELECT COUNT(*) FROM dump_master")
-                if cursor.fetchone()[0] == 0:
+                is_empty = cursor.fetchone()[0] == 0
+                if is_empty:
                     for i in range(1, total_dumps + 1):
                         d_id = f"dump-{i:02d}"
                         cursor.execute("INSERT INTO dump_master (dump_id, dump_name, updated_at) VALUES (?, ?, ?)",
