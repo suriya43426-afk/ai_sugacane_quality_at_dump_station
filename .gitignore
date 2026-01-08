@@ -17,3 +17,12 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Video/Large Files
+testing/vdo/
+testing/outcome/
+*.mp4
+*.avi
+*.mov
+*.db
+
