@@ -244,10 +244,14 @@ class DatabaseManager:
                 cursor.execute("SELECT COUNT(*) FROM dump_master")
                 is_empty = cursor.fetchone()[0] == 0
                 
+                import urllib.parse
                 def build_url(idx):
                     if nvr_ip and nvr_user and nvr_pass:
+                        # URL Encode credentials to handle special characters like '@'
+                        safe_user = urllib.parse.quote(str(nvr_user))
+                        safe_pass = urllib.parse.quote(str(nvr_pass))
                         # Use Sub Stream (02) instead of Main Stream (01) to save Bandwidth
-                        return f"rtsp://{nvr_user}:{nvr_pass}@{nvr_ip}:554/Streaming/Channels/{idx}02"
+                        return f"rtsp://{safe_user}:{safe_pass}@{nvr_ip}:554/Streaming/Channels/{idx}02"
                     return f"CH{idx}02" # Placeholder if no NVR info
 
                 if is_empty:
