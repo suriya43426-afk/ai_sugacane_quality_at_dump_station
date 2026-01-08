@@ -12,6 +12,13 @@ lpr_conf = 0.40
 use_gpu = auto
 
 [NVR]
-ip = 192.168.1.58
-username = admin
-password = Password@1
+# Secrets moved to secrets.ini
+ip = 
+username = 
+password = 
+
+[AWS]
+# Secrets moved to secrets.ini
+access_key_id = 
+secret_access_key = 
+region = ap-southeast-1

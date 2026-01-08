@@ -22,7 +22,7 @@ class SugarcaneSystem:
         else:
             self.log.warning("DEBUG: config.txt NOT FOUND in CWD!")
             
-        read_files = self.config.read("config.txt", encoding="utf-8")
+        read_files = self.config.read(["config.txt", "secrets.ini"], encoding="utf-8")
         self.log.info(f"DEBUG: ConfigParser read: {read_files}")
         
         t_val = self.config.get("DEFAULT", "testing", fallback="NOT_SET")

@@ -1,44 +1,19 @@
-# System and Runtime
-__pycache__/
-venv/
-*.py[cod]
-*$py.class
+# Secrets
+secrets.ini
+*.key
+*.pem
+
+# Logs
 *.log
-*.tmp
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv
+venv/
+.env
+
+# OS
 .DS_Store
 Thumbs.db
-
-# User specific / Local data
-# config.txt (Removed from ignore to match required structure)
-run_realtime.log
-CameraStatusLog.txt
-
-# Large Data Directories (don't commit these usually)
-images/
-Images/
-results/
-Results/
-debug/
-testing/
-!testing/vdo_resizing.py
-!testing/vdo_fastify.py
-buffer_images/
-buffer/
-VDO/
-vdo/
-# If python312 is a portable env specific to the machine, ignore it. 
-# If it's part of the portable installer, user might want it, but usually git is for source.
-# I will assume we ignore it to keep repo light.
-python312/
-
-# Models (optional: if very large, use git lfs, but for now ignore if managed separately)
-# If the user wants to version models, they can un-ignore this.
-# models/ 
-
-# Database
-*.db
-
-# Credentials
-source/credentials.json
-source/token.json
-source/*.json

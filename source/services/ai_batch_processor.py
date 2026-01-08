@@ -28,19 +28,45 @@ logging.basicConfig(
     ]
 )
 
-def load_config(config_path="config.txt"):
+def load_config(config_path="config.txt", secrets_path="secrets.ini"):
     # Search up to project root
     curr = os.path.dirname(os.path.abspath(__file__))
     for _ in range(4):
-        p = os.path.join(curr, config_path)
-        if os.path.exists(p):
+        p_config = os.path.join(curr, config_path)
+        p_secrets = os.path.join(curr, secrets_path)
+        
+        if os.path.exists(p_config):
             config = configparser.ConfigParser()
-            config.read(p)
+            # Read config first, then secrets (secrets override)
+            files_to_read = [p_config]
+            if os.path.exists(p_secrets):
+                files_to_read.append(p_secrets)
+                
+            config.read(files_to_read)
             return config
         curr = os.path.dirname(curr)
     return None
 
 def get_s3_client():
+    config = load_config()
+    aws_access_key = None
+    aws_secret_key = None
+    region = AWS_REGION
+
+    if config and 'AWS' in config:
+        aws_access_key = config['AWS'].get('access_key_id', '').strip()
+        aws_secret_key = config['AWS'].get('secret_access_key', '').strip()
+        region = config['AWS'].get('region', AWS_REGION).strip()
+
+    if aws_access_key and aws_secret_key:
+        return boto3.client(
+            's3',
+            region_name=region,
+            aws_access_key_id=aws_access_key,
+            aws_secret_access_key=aws_secret_key
+        )
+    
+    # Fallback to env vars or profile (standard boto3 behavior)
     return boto3.client('s3', region_name=AWS_REGION)
 
 # ==============================================================================

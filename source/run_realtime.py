@@ -3,7 +3,8 @@ import sys
 
 # Max Quality: TCP, Large Buffer, High Latency Allowed (5s)
 # Max Quality: TCP, Large Buffer, High Latency Allowed (5s) -> Optimized for Low Latency
-os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|fflags;nobuffer|flags;low_delay"
+# "nobuffer" caused h264 errors. Relaxing to 500ms buffer.
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|flags;low_delay|max_delay;500000"
 
 # Add project root to path for absolute imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
