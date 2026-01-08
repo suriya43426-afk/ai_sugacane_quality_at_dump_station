@@ -243,39 +243,44 @@ class DatabaseManager:
                 # Seed Dumps & Cameras if empty
                 cursor.execute("SELECT COUNT(*) FROM dump_master")
                 is_empty = cursor.fetchone()[0] == 0
+                
+                def build_url(idx):
+                    if nvr_ip and nvr_user and nvr_pass:
+                        # Use Sub Stream (02) instead of Main Stream (01) to save Bandwidth
+                        return f"rtsp://{nvr_user}:{nvr_pass}@{nvr_ip}:554/Streaming/Channels/{idx}02"
+                    return f"CH{idx}02" # Placeholder if no NVR info
+
                 if is_empty:
                     for i in range(1, total_dumps + 1):
                         d_id = f"dump-{i:02d}"
                         cursor.execute("INSERT INTO dump_master (dump_id, dump_name, updated_at) VALUES (?, ?, ?)",
                                      (d_id, f"Dump Station {i}", datetime.now()))
                         
-                        # RTSP URL Template (Hikvision style: rtsp://user:pass@ip:554/Streaming/Channels/CH01)
-                        # Front Camera: (2i-1)
-                        # Top Camera: (2i)
-                        
-                        def build_url(idx):
-                            if nvr_ip and nvr_user and nvr_pass:
-                                # Use Sub Stream (02) instead of Main Stream (01) to save Bandwidth
-                                return f"rtsp://{nvr_user}:{nvr_pass}@{nvr_ip}:554/Streaming/Channels/{idx}02"
-                            return f"CH{idx}02" # Placeholder if no NVR info
-
                         # Front Camera
+                        url_front = build_url(2*i-1)
                         c1_id = f"cam-{d_id}-front"
-                        ch_front = (2*i-1)
-                        url_front = build_url(ch_front)
                         cursor.execute("INSERT INTO camera_master (camera_id, camera_name, rtsp_url, view_type, updated_at) VALUES (?, ?, ?, ?, ?)",
                                      (c1_id, f"Front {i}", url_front, "FRONT", datetime.now()))
                         cursor.execute("INSERT INTO dump_camera_map (dump_id, camera_id, channel_type) VALUES (?, ?, ?)",
                                      (d_id, c1_id, "CH101"))
                         
                         # Top Camera
+                        url_top = build_url(2*i)
                         c2_id = f"cam-{d_id}-top"
-                        ch_top = (2*i)
-                        url_top = build_url(ch_top)
                         cursor.execute("INSERT INTO camera_master (camera_id, camera_name, rtsp_url, view_type, updated_at) VALUES (?, ?, ?, ?, ?)",
                                      (c2_id, f"Top {i}", url_top, "TOP", datetime.now()))
                         cursor.execute("INSERT INTO dump_camera_map (dump_id, camera_id, channel_type) VALUES (?, ?, ?)",
                                      (d_id, c2_id, "CH201"))
+                else:
+                    # If not empty, but we have NVR info, update URLs if they are currently invalid or placeholder
+                    if nvr_ip and nvr_user and nvr_pass:
+                        self.logger.info("Database already seeded. Updating RTSP URLs with real credentials...")
+                        for i in range(1, total_dumps + 1):
+                            d_id = f"dump-{i:02d}"
+                            cursor.execute("UPDATE camera_master SET rtsp_url = ? WHERE camera_id = ?", 
+                                         (build_url(2*i-1), f"cam-{d_id}-front"))
+                            cursor.execute("UPDATE camera_master SET rtsp_url = ? WHERE camera_id = ?", 
+                                         (build_url(2*i), f"cam-{d_id}-top"))
                 
                 conn.commit()
         except Exception as e:
