@@ -29,30 +29,39 @@ logging.basicConfig(
 )
 
 def load_config(config_path="config.txt", secrets_path="secrets.ini"):
-    # Search up to project root
-    curr = os.path.dirname(os.path.abspath(__file__))
-    logging.debug(f"Starting config search from: {curr}")
-    for i in range(4):
-        p_config = os.path.join(curr, config_path)
-        p_secrets = os.path.join(curr, secrets_path)
+    # Always try to find config files relative to the project root (3 levels up from this file)
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    p_config = os.path.join(base_dir, config_path)
+    p_secrets = os.path.join(base_dir, secrets_path)
+
+    logging.debug(f"Target Config: {p_config}")
+    logging.debug(f"Target Secrets: {p_secrets}")
+
+    if os.path.exists(p_config):
+        config = configparser.ConfigParser()
+        files_to_read = [p_config]
+        logging.info(f"Loading config: {p_config}")
         
-        logging.debug(f"Level {i} - Checking: {p_config}")
-        if os.path.exists(p_config):
-            config = configparser.ConfigParser()
-            files_to_read = [p_config]
-            logging.info(f"Root config found: {p_config}")
+        if os.path.exists(p_secrets):
+            logging.info(f"Loading secrets: {p_secrets}")
+            files_to_read.append(p_secrets)
+        else:
+            logging.warning(f"Secrets NOT found at: {p_secrets}")
             
-            if os.path.exists(p_secrets):
-                logging.info(f"Secrets file found: {p_secrets}")
-                files_to_read.append(p_secrets)
-            else:
-                logging.warning(f"Secrets file NOT found at: {p_secrets}")
-                
-            config.read(files_to_read)
+        config.read(files_to_read, encoding='utf-8')
+        return config
+    
+    # Fallback search (just in case)
+    curr = os.path.dirname(os.path.abspath(__file__))
+    for i in range(4):
+        f_config = os.path.join(curr, config_path)
+        if os.path.exists(f_config):
+            config = configparser.ConfigParser()
+            config.read([f_config, os.path.join(curr, secrets_path)], encoding='utf-8')
             return config
         curr = os.path.dirname(curr)
-    
-    logging.error("Could not find config.txt in any search path!")
+
+    logging.error("Could not find config.txt!")
     return None
 
 def get_s3_client():
