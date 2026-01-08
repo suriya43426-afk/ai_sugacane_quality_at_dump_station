@@ -49,7 +49,8 @@ class SugarcaneSystem:
                             # Log verbose or just ignore silent
                             pass
             else:
-                self.log.warning(f"Secrets NOT found at: {p_secrets}")
+                self.log.warning(f"CRITICAL WARNING: secrets.ini NOT found! Using baseline config.txt only. Credential mapping might fail.")
+                self.log.warning(f"Searched paths: {p_secrets} and {p_secrets}.txt")
         else:
             self.log.error(f"Critical: config.txt not found at {p_config}")
         

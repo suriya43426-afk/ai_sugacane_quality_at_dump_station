@@ -277,8 +277,9 @@ class DatabaseManager:
                                      (d_id, c2_id, "CH201"))
                 else:
                     # If not empty, but we have NVR info, update URLs
-                    if nvr_ip and nvr_user and nvr_pass:
-                        self.logger.info("Database already seeded. Updating RTSP URLs with real credentials...")
+                    # Relaxed check: update if at least nvr_ip is present
+                    if nvr_ip:
+                        self.logger.info(f"Checking Database sync with config. NVR IP: {nvr_ip}, User: {nvr_user}, Pass present: {bool(nvr_pass)}")
                         
                         # Fetch all active dumps sorted to ensure consistent channel mapping
                         cursor.execute("SELECT dump_id FROM dump_master WHERE is_active = 1 ORDER BY dump_id")
