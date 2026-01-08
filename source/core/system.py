@@ -19,18 +19,37 @@ class SugarcaneSystem:
 
         self.log.info(f"Target Config: {p_config}")
         if os.path.exists(p_config):
-            files_to_read = [p_config]
+            # 1. Read Main Config (Baseline)
+            self.config.read(p_config, encoding="utf-8")
+
+            # 2. Smart Overlay Secrets (Ignore empty values)
+            target_secrets = None
             if os.path.exists(p_secrets):
-                self.log.info(f"Found secrets: {p_secrets}")
-                files_to_read.append(p_secrets)
+                target_secrets = p_secrets
             elif os.path.exists(p_secrets + ".txt"):
-                p_secrets = p_secrets + ".txt"
-                self.log.info(f"Found secrets (fallback): {p_secrets}")
-                files_to_read.append(p_secrets)
+                target_secrets = p_secrets + ".txt"
+            
+            if target_secrets:
+                self.log.info(f"Found secrets: {target_secrets}")
+                
+                # Load secrets into a temporary parser
+                secret_parser = configparser.ConfigParser()
+                secret_parser.read(target_secrets, encoding="utf-8")
+                
+                # Merge ONLY non-empty values
+                for section in secret_parser.sections():
+                    if not self.config.has_section(section):
+                        self.config.add_section(section)
+                    
+                    for key, value in secret_parser.items(section):
+                        # CRITICAL FIX: Only override if value is NOT empty
+                        if value and value.strip():
+                            self.config.set(section, key, value)
+                        else:
+                            # Log verbose or just ignore silent
+                            pass
             else:
                 self.log.warning(f"Secrets NOT found at: {p_secrets}")
-            
-            self.config.read(files_to_read, encoding="utf-8")
         else:
             self.log.error(f"Critical: config.txt not found at {p_config}")
         

@@ -272,15 +272,36 @@ class DatabaseManager:
                         cursor.execute("INSERT INTO dump_camera_map (dump_id, camera_id, channel_type) VALUES (?, ?, ?)",
                                      (d_id, c2_id, "CH201"))
                 else:
-                    # If not empty, but we have NVR info, update URLs if they are currently invalid or placeholder
+                    # If not empty, but we have NVR info, update URLs
                     if nvr_ip and nvr_user and nvr_pass:
                         self.logger.info("Database already seeded. Updating RTSP URLs with real credentials...")
-                        for i in range(1, total_dumps + 1):
-                            d_id = f"dump-{i:02d}"
-                            cursor.execute("UPDATE camera_master SET rtsp_url = ? WHERE camera_id = ?", 
-                                         (build_url(2*i-1), f"cam-{d_id}-front"))
-                            cursor.execute("UPDATE camera_master SET rtsp_url = ? WHERE camera_id = ?", 
-                                         (build_url(2*i), f"cam-{d_id}-top"))
+                        
+                        # Fetch all active dumps sorted to ensure consistent channel mapping
+                        cursor.execute("SELECT dump_id FROM dump_master WHERE is_active = 1 ORDER BY dump_id")
+                        all_dumps = cursor.fetchall()
+                        
+                        for i, row in enumerate(all_dumps, start=1):
+                            d_id = row['dump_id']
+                            
+                            # Update Front (CH101) for this dump
+                            cursor.execute("""
+                                UPDATE camera_master 
+                                SET rtsp_url = ? 
+                                WHERE camera_id IN (
+                                    SELECT camera_id FROM dump_camera_map 
+                                    WHERE dump_id = ? AND channel_type = 'CH101'
+                                )
+                            """, (build_url(2*i-1), d_id))
+                            
+                            # Update Top (CH201) for this dump
+                            cursor.execute("""
+                                UPDATE camera_master 
+                                SET rtsp_url = ? 
+                                WHERE camera_id IN (
+                                    SELECT camera_id FROM dump_camera_map 
+                                    WHERE dump_id = ? AND channel_type = 'CH201'
+                                )
+                            """, (build_url(2*i), d_id))
                 
                 conn.commit()
         except Exception as e:

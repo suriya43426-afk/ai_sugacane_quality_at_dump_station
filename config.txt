@@ -1,7 +1,7 @@
 [DEFAULT]
 factory = MDC
 milling_process = A
-total_dumps = 8
+total_dumps = 6
 testing = 0
 
 [DATABASE]
@@ -13,10 +13,9 @@ use_gpu = auto
 
 [NVR]
 # Secrets moved to secrets.ini
-ip = 
-username = 
+ip = 192.168.1.58
+username = admin
 password = 
-
 [AWS]
 # Secrets moved to secrets.ini
 access_key_id = 
