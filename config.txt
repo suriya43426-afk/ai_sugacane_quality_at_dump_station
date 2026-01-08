@@ -13,7 +13,7 @@ use_gpu = auto
 
 [NVR]
 # Secrets moved to secrets.ini
-ip = 192.168.1.58
+ip = 192.168.0.21
 username = admin
 password = 
 [AWS]
